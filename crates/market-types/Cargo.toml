@@ -1,0 +1,9 @@
+[package]
+name = "market-types"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+near-sdk = { workspace = true }
+serde = { workspace = true }
+borsh = "1.6"

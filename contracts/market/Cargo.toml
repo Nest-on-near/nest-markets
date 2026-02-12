@@ -1,0 +1,15 @@
+[package]
+name = "market-contract"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
+market-types = { workspace = true }
+hex = "0.4"
+
+[dev-dependencies]
+near-sdk = { version = "5.14", features = ["unit-testing"] }
