@@ -19,7 +19,7 @@ echo "Building contracts..."
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-for contract in contracts/outcome-token contracts/market; do
+for contract in outcome-token market; do
     echo "  Building $contract..."
     (cd "$contract" && cargo near build non-reproducible-wasm --no-abi)
 done

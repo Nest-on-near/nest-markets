@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "contracts/market",
-    "contracts/outcome-token",
-    "contracts/mock-ft",
+    "market",
+    "outcome-token",
+    "mock-ft",
     "crates/market-types",
     "integration-tests",
 ]
