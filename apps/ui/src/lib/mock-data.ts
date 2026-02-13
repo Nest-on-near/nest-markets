@@ -1,0 +1,45 @@
+import type { MarketView } from '@/lib/types';
+
+const nowNs = Date.now() * 1_000_000;
+
+export const mockMarkets: MarketView[] = [
+  {
+    id: 1,
+    question: 'Will NEAR close above $10 by June 30, 2026?',
+    description: 'Settlement uses daily close from approved oracle source.',
+    resolutionTimeNs: (nowNs + 7 * 24 * 60 * 60 * 1_000_000_000).toString(),
+    creator: 'trader.near',
+    status: 'Open',
+    outcome: null,
+    yesReserve: '580000000',
+    noReserve: '420000000',
+    volume: '2180000000',
+    feeBps: 200,
+  },
+  {
+    id: 2,
+    question: 'Will BTC ETF net inflows exceed $2B this month?',
+    description: 'Resolved through Nest oracle assertion after end-of-month.',
+    resolutionTimeNs: (nowNs + 13 * 24 * 60 * 60 * 1_000_000_000).toString(),
+    creator: 'alpha.near',
+    status: 'Open',
+    outcome: null,
+    yesReserve: '490000000',
+    noReserve: '510000000',
+    volume: '1210000000',
+    feeBps: 200,
+  },
+  {
+    id: 3,
+    question: 'Will US CPI YoY print below 3.0% next release?',
+    description: 'Final value from official CPI release determines settlement.',
+    resolutionTimeNs: (nowNs + 18 * 24 * 60 * 60 * 1_000_000_000).toString(),
+    creator: 'macro.near',
+    status: 'Resolving',
+    outcome: null,
+    yesReserve: '550000000',
+    noReserve: '450000000',
+    volume: '3000000000',
+    feeBps: 200,
+  },
+];

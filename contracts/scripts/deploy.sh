@@ -26,7 +26,7 @@ done
 
 echo ""
 echo "=== Deploying Outcome Token Contract ==="
-OUTCOME_TOKEN_ID="${OUTCOME_TOKEN_ID:-outcome-token.testnet}"
+OUTCOME_TOKEN_ID="${OUTCOME_TOKEN_ID:-outcome-token-1.testnet}"
 near deploy "$OUTCOME_TOKEN_ID" \
     target/near/outcome_token/outcome_token.wasm \
     --network-id "$NETWORK" \
@@ -34,7 +34,7 @@ near deploy "$OUTCOME_TOKEN_ID" \
 
 echo ""
 echo "=== Deploying Market Contract ==="
-MARKET_ID="${MARKET_ID:-nest-market.testnet}"
+MARKET_ID="${MARKET_ID:-nest-market-1.testnet}"
 near deploy "$MARKET_ID" \
     target/near/market_contract/market_contract.wasm \
     --network-id "$NETWORK" \
