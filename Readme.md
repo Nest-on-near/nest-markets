@@ -10,10 +10,10 @@ This repository is organized as a monorepo for the full prediction market stack:
 
 | Contract       | Account                    |
 | -------------- | -------------------------- |
-| Outcome Token  | `outcome-token-1.testnet`  |
-| Market         | `nest-market-1.testnet`    |
+| Outcome Token  | `outcome-token-2.testnet`  |
+| Market         | `nest-market-2.testnet`    |
 | Oracle         | `nest-oracle-3.testnet`    |
-| USDC (fake)    | `usdc.fakes.testnet`       |
+| nUSD (mock)    | `nusd-1.testnet`           |
 
 ## Quick Start
 

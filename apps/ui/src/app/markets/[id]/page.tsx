@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useNearWallet } from 'near-connect-hooks';
 
+import { PriceHistoryChart } from '@/components/markets/price-history-chart';
 import { TradePanel } from '@/components/markets/trade-panel';
 import { ProbabilityBar } from '@/components/ui/probability-bar';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -59,6 +60,7 @@ export default function MarketDetailPage() {
         <p>{market.description}</p>
 
         <ProbabilityBar yes={prices.yes} no={prices.no} />
+        <PriceHistoryChart marketId={market.id} yes={prices.yes} no={prices.no} />
 
         <div className="detail-stats">
           <div>
@@ -66,8 +68,8 @@ export default function MarketDetailPage() {
             <strong>{formatResolutionTime(market.resolutionTimeNs)}</strong>
           </div>
           <div>
-            <span className="muted">Volume</span>
-            <strong>{formatUsd(Number(market.volume) / 1_000_000)}</strong>
+            <span className="muted">Collateral</span>
+            <strong>{formatUsd(Number(market.totalCollateral) / 1_000_000)}</strong>
           </div>
           <div>
             <span className="muted">Fee</span>

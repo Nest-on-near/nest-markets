@@ -1,7 +1,7 @@
-import { CONTRACTS, DEFAULT_GAS, MARKET_FEE_BPS_DEFAULT, ONE_YOCTO } from '@/config';
+import { CONTRACTS, DEFAULT_GAS, INDEXER_URL, MARKET_FEE_BPS_DEFAULT, ONE_YOCTO } from '@/config';
 import { fromChainAmount, toChainAmount } from '@/lib/format';
 import { mockMarkets } from '@/lib/mock-data';
-import type { MarketStatus, MarketView, Outcome, PositionView } from '@/lib/types';
+import type { IndexedPricePoint, MarketStatus, MarketView, Outcome, PositionView } from '@/lib/types';
 
 interface WalletLike {
   viewFunction: (args: { contractId: string; method: string; args?: Record<string, unknown> }) => Promise<unknown>;
@@ -32,29 +32,60 @@ function normalizeOutcome(value: unknown): Outcome | null {
   return outcome.includes('yes') ? 'Yes' : outcome.includes('no') ? 'No' : null;
 }
 
+function unwrapNearNumber(value: unknown, fallback = '0'): string {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  if (value && typeof value === 'object' && '0' in value) {
+    const raw = (value as Record<string, unknown>)['0'];
+    if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'bigint') {
+      return String(raw);
+    }
+  }
+
+  return fallback;
+}
+
 function parseMarket(raw: Record<string, unknown>): MarketView {
-  const id = Number(raw.id ?? raw.market_id ?? 0);
+  const id = Number(unwrapNearNumber(raw.id ?? raw.market_id, '0'));
+  const yesReserve = unwrapNearNumber(raw.yes_reserve ?? raw.yesReserve, '0');
+  const noReserve = unwrapNearNumber(raw.no_reserve ?? raw.noReserve, '0');
+  const yesPrice = unwrapNearNumber(raw.yes_price, '500000');
+  const noPrice = unwrapNearNumber(raw.no_price, '500000');
+  const totalCollateral = unwrapNearNumber(raw.total_collateral, '0');
 
   return {
     id,
     question: String(raw.question ?? `Market #${id}`),
     description: String(raw.description ?? ''),
-    resolutionTimeNs: String(raw.resolution_time_ns ?? raw.resolution_time ?? '0'),
+    resolutionTimeNs: unwrapNearNumber(raw.resolution_time_ns ?? raw.resolution_time, '0'),
     creator: String(raw.creator ?? ''),
     status: normalizeStatus(raw.status),
     outcome: normalizeOutcome(raw.outcome),
-    yesReserve: String(raw.yes_reserve ?? raw.yesReserve ?? '0'),
-    noReserve: String(raw.no_reserve ?? raw.noReserve ?? '0'),
-    volume: String(raw.volume ?? '0'),
+    yesReserve,
+    noReserve,
+    yesPrice,
+    noPrice,
+    totalCollateral,
     feeBps: Number(raw.fee_bps ?? MARKET_FEE_BPS_DEFAULT),
   };
 }
 
 export function getPrices(market: MarketView): { yes: number; no: number } {
+  const yesFromContract = Number(market.yesPrice);
+  const noFromContract = Number(market.noPrice);
+
+  if (Number.isFinite(yesFromContract) && Number.isFinite(noFromContract) && yesFromContract >= 0 && noFromContract >= 0) {
+    return {
+      yes: yesFromContract / 10_000,
+      no: noFromContract / 10_000,
+    };
+  }
+
   const yes = Number(market.yesReserve);
   const no = Number(market.noReserve);
   const total = yes + no;
-
   if (!Number.isFinite(total) || total <= 0) {
     return { yes: 50, no: 50 };
   }
@@ -65,53 +96,96 @@ export function getPrices(market: MarketView): { yes: number; no: number } {
   };
 }
 
+export async function fetchIndexedPriceHistory(marketId: number, limit = 200): Promise<IndexedPricePoint[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 2000));
+  const response = await fetch(`${INDEXER_URL}/markets/${marketId}/price-history?limit=${safeLimit}`, {
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch indexed price history: ${response.status}`);
+  }
+
+  const payload = await response.json() as {
+    market_id?: unknown;
+    points?: Array<{
+      block_height?: unknown;
+      timestamp_ms?: unknown;
+      yes?: unknown;
+      no?: unknown;
+      yes_raw?: unknown;
+      no_raw?: unknown;
+    }>;
+  };
+
+  if (!Array.isArray(payload.points)) {
+    return [];
+  }
+
+  return payload.points.map((point) => ({
+    blockHeight: Number(point.block_height ?? 0),
+    timestampMs: Number(point.timestamp_ms ?? 0),
+    yes: Number(point.yes ?? 0),
+    no: Number(point.no ?? 0),
+    yesRaw: String(point.yes_raw ?? '0'),
+    noRaw: String(point.no_raw ?? '0'),
+  }));
+}
+
+export function getIndexerWebSocketUrl(marketId: number): string {
+  const base = INDEXER_URL.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}/ws${separator}market_id=${marketId}`;
+}
+
 export async function fetchMarkets(wallet: WalletLike): Promise<MarketView[]> {
   try {
-    const allMarkets = await wallet.viewFunction({
+    const countRaw = await wallet.viewFunction({
       contractId: CONTRACTS.market,
-      method: 'get_all_markets',
+      method: 'get_market_count',
     });
 
-    if (Array.isArray(allMarkets)) {
-      return allMarkets.map((market) => parseMarket(market as Record<string, unknown>));
+    const count = Number(unwrapNearNumber(countRaw, '0'));
+
+    if (!Number.isFinite(count) || count <= 0) {
+      return [];
     }
 
-    throw new Error('get_all_markets returned non-array');
-  } catch {
-    try {
-      const countRaw = await wallet.viewFunction({
+    const marketPromises = Array.from({ length: count }, (_, index) => {
+      return wallet.viewFunction({
         contractId: CONTRACTS.market,
-        method: 'get_market_count',
+        method: 'get_market',
+        args: { market_id: index },
       });
+    });
 
-      const count = Number(countRaw ?? 0);
+    const rawMarkets = await Promise.all(marketPromises);
 
-      if (!Number.isFinite(count) || count <= 0) {
-        return mockMarkets;
-      }
-
-      const marketPromises = Array.from({ length: count }, (_, index) => {
-        return wallet.viewFunction({
-          contractId: CONTRACTS.market,
-          method: 'get_market',
-          args: { market_id: index },
-        });
-      });
-
-      const rawMarkets = await Promise.all(marketPromises);
-
-      return rawMarkets
-        .filter(Boolean)
-        .map((market) => parseMarket(market as Record<string, unknown>));
-    } catch {
-      return mockMarkets;
-    }
+    return rawMarkets
+      .filter(Boolean)
+      .map((market) => parseMarket(market as Record<string, unknown>));
+  } catch {
+    return mockMarkets;
   }
 }
 
 export async function fetchMarketById(wallet: WalletLike, marketId: number): Promise<MarketView | null> {
-  const markets = await fetchMarkets(wallet);
-  return markets.find((market) => market.id === marketId) ?? null;
+  try {
+    const market = await wallet.viewFunction({
+      contractId: CONTRACTS.market,
+      method: 'get_market',
+      args: { market_id: marketId },
+    });
+
+    if (!market || typeof market !== 'object') {
+      return null;
+    }
+
+    return parseMarket(market as Record<string, unknown>);
+  } catch {
+    const markets = await fetchMarkets(wallet);
+    return markets.find((m) => m.id === marketId) ?? null;
+  }
 }
 
 export async function buyOutcome(wallet: WalletLike, params: {
@@ -199,7 +273,27 @@ export async function redeemWinningTokens(wallet: WalletLike, params: {
   });
 }
 
-async function fetchOutcomeBalance(wallet: WalletLike, marketId: number, outcome: Outcome): Promise<number> {
+export async function fetchCollateralBalance(wallet: WalletLike): Promise<number> {
+  if (!wallet.signedAccountId) {
+    return 0;
+  }
+
+  const raw = await wallet.viewFunction({
+    contractId: CONTRACTS.usdc,
+    method: 'ft_balance_of',
+    args: {
+      account_id: wallet.signedAccountId,
+    },
+  });
+
+  return fromChainAmount(unwrapNearNumber(raw, '0'));
+}
+
+export async function fetchOutcomeBalance(wallet: WalletLike, marketId: number, outcome: Outcome): Promise<number> {
+  if (!wallet.signedAccountId) {
+    return 0;
+  }
+
   const raw = await wallet.viewFunction({
     contractId: CONTRACTS.outcomeToken,
     method: 'balance_of',
@@ -210,7 +304,25 @@ async function fetchOutcomeBalance(wallet: WalletLike, marketId: number, outcome
     },
   });
 
-  return fromChainAmount(String(raw ?? '0'));
+  return fromChainAmount(unwrapNearNumber(raw, '0'));
+}
+
+export async function estimateBuyTokens(wallet: WalletLike, params: {
+  marketId: number;
+  outcome: Outcome;
+  collateralIn: number;
+}): Promise<number> {
+  const result = await wallet.viewFunction({
+    contractId: CONTRACTS.market,
+    method: 'estimate_buy',
+    args: {
+      market_id: params.marketId,
+      outcome: params.outcome,
+      collateral_in: toChainAmount(params.collateralIn),
+    },
+  });
+
+  return fromChainAmount(unwrapNearNumber(result, '0'));
 }
 
 export async function fetchPortfolio(wallet: WalletLike): Promise<PositionView[]> {

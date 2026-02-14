@@ -1,9 +1,9 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { DEFAULT_SLIPPAGE } from '@/config';
-import { buyOutcome, sellOutcome } from '@/lib/markets';
+import { buyOutcome, estimateBuyTokens, fetchCollateralBalance, fetchOutcomeBalance, sellOutcome } from '@/lib/markets';
 import type { Outcome } from '@/lib/types';
 
 interface WalletLike {
@@ -32,11 +32,16 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
   const [amount, setAmount] = useState('10');
   const [slippage, setSlippage] = useState(String(DEFAULT_SLIPPAGE));
   const [pending, setPending] = useState(false);
+  const [estimating, setEstimating] = useState(false);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [collateralBalance, setCollateralBalance] = useState(0);
+  const [yesBalance, setYesBalance] = useState(0);
+  const [noBalance, setNoBalance] = useState(0);
   const [error, setError] = useState('');
 
   const selectedPrice = outcome === 'Yes' ? yesPrice : noPrice;
 
-  const estimate = useMemo(() => {
+  const localEstimate = useMemo(() => {
     const value = Number(amount);
 
     if (!Number.isFinite(value) || value <= 0 || selectedPrice <= 0) {
@@ -45,6 +50,85 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
 
     return mode === 'Buy' ? value / (selectedPrice / 100) : value * (selectedPrice / 100);
   }, [amount, mode, selectedPrice]);
+  const [estimate, setEstimate] = useState(0);
+  const availableAmount = mode === 'Buy'
+    ? collateralBalance
+    : outcome === 'Yes'
+      ? yesBalance
+      : noBalance;
+
+  async function loadBalances() {
+    if (!wallet.signedAccountId) {
+      setCollateralBalance(0);
+      setYesBalance(0);
+      setNoBalance(0);
+      return;
+    }
+
+    setBalancesLoading(true);
+    try {
+      const [nextCollateral, nextYes, nextNo] = await Promise.all([
+        fetchCollateralBalance(wallet),
+        fetchOutcomeBalance(wallet, marketId, 'Yes'),
+        fetchOutcomeBalance(wallet, marketId, 'No'),
+      ]);
+      setCollateralBalance(nextCollateral);
+      setYesBalance(nextYes);
+      setNoBalance(nextNo);
+    } finally {
+      setBalancesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      setEstimate(0);
+      return;
+    }
+
+    if (mode === 'Sell') {
+      setEstimate(localEstimate);
+      return;
+    }
+
+    let cancelled = false;
+    setEstimating(true);
+
+    estimateBuyTokens(wallet, { marketId, outcome, collateralIn: value })
+      .then((nextEstimate) => {
+        if (!cancelled) {
+          setEstimate(nextEstimate);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEstimate(localEstimate);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setEstimating(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [amount, localEstimate, marketId, mode, outcome, wallet]);
+
+  useEffect(() => {
+    loadBalances();
+  }, [marketId, wallet.signedAccountId]);
+
+  function fillPercent(percent: number) {
+    if (!Number.isFinite(availableAmount) || availableAmount <= 0) {
+      return;
+    }
+
+    const next = availableAmount * (percent / 100);
+    setAmount(String(Number(next.toFixed(6))));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,6 +167,7 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
       }
 
       await onTradeComplete();
+      await loadBalances();
     } catch {
       setError('Transaction failed. Check wallet and contract setup.');
     } finally {
@@ -113,17 +198,52 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
       </div>
 
       <form onSubmit={handleSubmit}>
+        <div className="trade-balance-grid">
+          <div>
+            <span className="muted">nUSD Balance</span>
+            <strong>{collateralBalance.toFixed(2)}</strong>
+          </div>
+          <div>
+            <span className="muted">YES Balance</span>
+            <strong>{yesBalance.toFixed(2)}</strong>
+          </div>
+          <div>
+            <span className="muted">NO Balance</span>
+            <strong>{noBalance.toFixed(2)}</strong>
+          </div>
+        </div>
+
         <label>
           {mode === 'Buy' ? 'Spend (USDC)' : 'Tokens'}
           <input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0" step="0.01" />
         </label>
+
+        <div className="percent-row">
+          {[25, 50, 75, 100].map((percent) => (
+            <button
+              key={percent}
+              type="button"
+              className="percent-button"
+              onClick={() => fillPercent(percent)}
+              disabled={balancesLoading || availableAmount <= 0}
+            >
+              {percent}%
+            </button>
+          ))}
+          <span className="muted">
+            Available {mode === 'Buy' ? 'nUSD' : outcome}: {availableAmount.toFixed(2)}
+          </span>
+        </div>
 
         <label>
           Slippage (%)
           <input value={slippage} onChange={(event) => setSlippage(event.target.value)} type="number" min="0" step="0.1" />
         </label>
 
-        <p className="muted">Estimated {mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}</p>
+        <p className="muted">
+          Estimated {mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}
+          {mode === 'Buy' && estimating ? ' (updating...)' : ''}
+        </p>
 
         {error ? <p className="error-text">{error}</p> : null}
 

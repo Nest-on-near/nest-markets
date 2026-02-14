@@ -28,7 +28,7 @@ export function MarketCard({ market }: MarketCardProps) {
       <ProbabilityBar yes={prices.yes} no={prices.no} />
 
       <div className="market-card__footer">
-        <span>Volume {formatUsd(Number(market.volume) / 1_000_000)}</span>
+        <span>Collateral {formatUsd(Number(market.totalCollateral) / 1_000_000)}</span>
         <span>Fee {(market.feeBps / 100).toFixed(2)}%</span>
       </div>
     </article>

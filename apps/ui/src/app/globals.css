@@ -290,6 +290,209 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* ── Polymarket-style chart (light theme) ── */
+.price-chart {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1.1rem 1.2rem 0.9rem;
+}
+
+.price-chart__legend {
+  align-items: center;
+  display: flex;
+  gap: 1.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.price-chart__legend-item {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  gap: 0.4rem;
+  letter-spacing: 0.01em;
+}
+
+.price-chart__legend-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
+.price-chart__legend-item--yes .price-chart__legend-dot {
+  background: var(--yes);
+}
+
+.price-chart__legend-item--no .price-chart__legend-dot {
+  background: var(--no);
+}
+
+.price-chart__status {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0;
+  padding: 1rem 0;
+}
+
+.price-chart__status--error {
+  color: #d9534f;
+}
+
+.price-chart__svg {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  height: 220px;
+  width: 100%;
+}
+
+.price-chart__grid {
+  stroke: var(--line);
+  stroke-dasharray: 3 3;
+  stroke-width: 0.4;
+}
+
+.price-chart__line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+
+.price-chart__line--yes {
+  stroke: var(--yes);
+}
+
+.price-chart__line--no {
+  stroke: var(--no);
+}
+
+.price-chart__ranges {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+}
+
+.price-chart__range-button {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.28rem 0.6rem;
+  transition: color 0.15s, background 0.15s;
+}
+
+.price-chart__range-button:hover {
+  color: var(--text);
+}
+
+.price-chart__range-button.active {
+  background: var(--text);
+  border: none;
+  color: var(--paper);
+}
+
+.price-chart__plot {
+  position: relative;
+}
+
+.price-chart__y-axis {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.68rem;
+  font-weight: 500;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  inset: 0 -0.5rem 0 auto;
+  letter-spacing: 0.02em;
+  padding: 0 0.35rem;
+  pointer-events: none;
+  position: absolute;
+  text-align: right;
+}
+
+.price-chart__y-axis span {
+  background: var(--paper);
+  padding-left: 0.28rem;
+}
+
+.price-chart__crosshair {
+  stroke: var(--muted);
+  stroke-dasharray: 2 2;
+  stroke-width: 0.5;
+}
+
+.price-chart__dot {
+  stroke: var(--paper);
+  stroke-width: 0.8;
+}
+
+.price-chart__dot--yes {
+  fill: var(--yes);
+}
+
+.price-chart__dot--no {
+  fill: var(--no);
+}
+
+.price-chart__tooltip {
+  background: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--paper);
+  display: flex;
+  flex-direction: column;
+  font-size: 0.72rem;
+  gap: 0.15rem;
+  left: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  pointer-events: none;
+  position: absolute;
+  top: 0.6rem;
+}
+
+.price-chart__tooltip-time {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.66rem;
+  margin-bottom: 0.1rem;
+}
+
+.price-chart__tooltip-yes {
+  color: #5ee8b5;
+}
+
+.price-chart__tooltip-no {
+  color: #f5a0c8;
+}
+
+.price-chart__x-axis {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.68rem;
+  font-weight: 500;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  letter-spacing: 0.02em;
+  margin-top: 0.35rem;
+}
+
+.price-chart__x-axis span:nth-child(2) {
+  text-align: center;
+}
+
+.price-chart__x-axis span:nth-child(3) {
+  text-align: right;
+}
+
 .detail-stats div,
 .position-grid div {
   display: flex;
@@ -339,6 +542,44 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.trade-balance-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.trade-balance-grid div {
+  border: 1px solid #e1ddcf;
+  border-radius: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.percent-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.percent-button {
+  background: #f4f8ff;
+  border: 1px solid #d6deec;
+  border-radius: 0.55rem;
+  color: #44506a;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.22rem 0.5rem;
+}
+
+.percent-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .position-grid {

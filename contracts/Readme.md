@@ -169,6 +169,179 @@ sequenceDiagram
 9. `integration-tests/tests/e2e_market_flow.rs`:
    - Deployment/init reference; extend for full lifecycle tests.
 
+## Contract API Reference
+
+### Market Contract
+
+#### Write Methods (via `ft_transfer_call` on USDC contract)
+
+All write actions are routed through `ft_transfer_call` on the USDC token contract. The `receiver_id` is the market contract, and the `msg` field is a JSON-encoded `MarketFtMsg`:
+
+**Create Market**
+```json
+{
+  "action": "CreateMarket",
+  "question": "Will ETH hit $10k by end of 2026?",
+  "description": "Resolves YES if ...",
+  "resolution_time_ns": "1735689600000000000"
+}
+```
+- `amount`: initial liquidity in USDC (min 10 USDC = `"10000000"`)
+- `resolution_time_ns`: nanosecond timestamp (string-encoded u64)
+
+**Buy Outcome Tokens**
+```json
+{
+  "action": "Buy",
+  "market_id": 0,
+  "outcome": "Yes",
+  "min_tokens_out": "900000"
+}
+```
+- `amount`: USDC collateral to spend
+- `outcome`: `"Yes"` or `"No"`
+- `min_tokens_out`: slippage protection (string-encoded u128)
+
+**Add Liquidity**
+```json
+{
+  "action": "AddLiquidity",
+  "market_id": 0
+}
+```
+- `amount`: USDC to add as liquidity
+
+**Submit Resolution**
+```json
+{
+  "action": "SubmitResolution",
+  "market_id": 0,
+  "outcome": "Yes"
+}
+```
+- `amount`: USDC bond forwarded to oracle
+- Only callable after `resolution_time_ns` has passed
+
+#### Write Methods (direct calls)
+
+**`sell`** — Sell outcome tokens back to the pool for USDC
+```
+near call <market> sell '{"market_id": 0, "outcome": "Yes", "tokens_in": "1000000", "min_collateral_out": "400000"}' --accountId <user>
+```
+| Param | Type | Description |
+|---|---|---|
+| `market_id` | `u64` | Market ID |
+| `outcome` | `"Yes" \| "No"` | Which token to sell |
+| `tokens_in` | `U128` | Amount of outcome tokens to sell |
+| `min_collateral_out` | `U128` | Minimum USDC to receive (slippage) |
+
+**`remove_liquidity`** — Withdraw LP position
+```
+near call <market> remove_liquidity '{"market_id": 0, "shares": "10000000"}' --accountId <user>
+```
+| Param | Type | Description |
+|---|---|---|
+| `market_id` | `u64` | Market ID |
+| `shares` | `U128` | LP shares to burn |
+
+**`redeem_tokens`** — Redeem winning tokens for USDC 1:1 after settlement
+```
+near call <market> redeem_tokens '{"market_id": 0, "amount": "1000000"}' --accountId <user>
+```
+| Param | Type | Description |
+|---|---|---|
+| `market_id` | `u64` | Market ID (must be `Settled`) |
+| `amount` | `U128` | Winning outcome tokens to redeem |
+
+#### View Methods (free, no gas)
+
+**`get_market`** — Returns full market state
+```
+near view <market> get_market '{"market_id": 0}'
+```
+Returns `MarketView`:
+```json
+{
+  "id": "0",
+  "question": "Will ETH hit $10k?",
+  "description": "...",
+  "creator": "alice.testnet",
+  "resolution_time_ns": "1735689600000000000",
+  "status": "Open",
+  "outcome": null,
+  "yes_reserve": "5000000",
+  "no_reserve": "5000000",
+  "yes_price": "500000",
+  "no_price": "500000",
+  "total_lp_shares": "10000000",
+  "total_collateral": "10000000",
+  "fee_bps": 200,
+  "accrued_fees": "0"
+}
+```
+- Prices are scaled to 1e6 (`500000` = 0.50 = 50%)
+- Status: `"Open"`, `"Closed"`, `"Resolving"`, `"Disputed"`, `"Settled"`
+
+**`get_market_count`** — Total number of markets created
+```
+near view <market> get_market_count
+```
+Returns `u64`.
+
+**`get_prices`** — Current YES/NO prices
+```
+near view <market> get_prices '{"market_id": 0}'
+```
+Returns `[U128, U128]` — `[yes_price, no_price]`, scaled to 1e6.
+
+**`estimate_buy`** — Preview tokens received for a given collateral amount
+```
+near view <market> estimate_buy '{"market_id": 0, "outcome": "Yes", "collateral_in": "1000000"}'
+```
+Returns `U128` — estimated tokens out (after fees).
+
+**`get_lp_shares`** — LP share balance for an account
+```
+near view <market> get_lp_shares '{"market_id": 0, "account_id": "alice.testnet"}'
+```
+Returns `U128`.
+
+**`get_config`** — Protocol configuration
+```
+near view <market> get_config
+```
+Returns `ConfigView`:
+```json
+{
+  "owner": "owner.testnet",
+  "usdc_token": "nusd-1.testnet",
+  "outcome_token": "outcome-token-2.testnet",
+  "oracle": "nest-oracle-3.testnet",
+  "market_count": "5",
+  "default_fee_bps": 200
+}
+```
+
+### Outcome Token Contract
+
+All mutating methods are restricted to the market contract only. Frontend reads use the view methods.
+
+#### View Methods
+
+**`balance_of`** — Token balance for a user in a specific market/outcome
+```
+near view <outcome-token> balance_of '{"market_id": 0, "outcome": "Yes", "account_id": "alice.testnet"}'
+```
+Returns `U128`.
+
+**`total_supply`** — Total minted tokens for a market/outcome
+```
+near view <outcome-token> total_supply '{"market_id": 0, "outcome": "Yes"}'
+```
+Returns `U128`.
+
+---
+
 ## Build & Test
 
 Requires Rust 1.86.0 (pinned in `rust-toolchain.toml`) and [`cargo-near`](https://github.com/near/cargo-near).

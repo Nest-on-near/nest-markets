@@ -9,7 +9,7 @@ import type { MarketStatus, MarketView } from '@/lib/types';
 
 type StatusFilter = 'All' | Exclude<MarketStatus, 'Unknown'>;
 
-type SortOption = 'newest' | 'volume';
+type SortOption = 'newest' | 'collateral';
 
 export default function MarketsPage() {
   const wallet = useNearWallet();
@@ -47,8 +47,8 @@ export default function MarketsPage() {
       .filter((market) => market.question.toLowerCase().includes(search.toLowerCase()));
 
     return filtered.sort((a, b) => {
-      if (sortBy === 'volume') {
-        return Number(b.volume) - Number(a.volume);
+      if (sortBy === 'collateral') {
+        return Number(b.totalCollateral) - Number(a.totalCollateral);
       }
 
       return b.id - a.id;
@@ -81,7 +81,7 @@ export default function MarketsPage() {
 
         <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)}>
           <option value="newest">Newest</option>
-          <option value="volume">Highest volume</option>
+          <option value="collateral">Highest collateral</option>
         </select>
       </section>
 

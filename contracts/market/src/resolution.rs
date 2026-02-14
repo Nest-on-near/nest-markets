@@ -46,6 +46,8 @@ impl MarketContract {
             .expect("keccak256 produces 32 bytes");
 
         let claim_hex = hex::encode(claim);
+        market.assertion_id = Some(claim);
+        self.assertion_to_market.insert(claim, market_id);
 
         self.markets.insert(market_id, market);
 

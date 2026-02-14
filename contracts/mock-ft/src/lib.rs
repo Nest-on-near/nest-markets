@@ -18,7 +18,7 @@ enum StorageKey {
     Metadata,
 }
 
-/// Minimal NEP-141 token for integration testing (mock USDC).
+/// Minimal NEP-141 token for integration testing (nUSD).
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct MockFt {
@@ -37,8 +37,8 @@ impl MockFt {
                 StorageKey::Metadata,
                 Some(&FungibleTokenMetadata {
                     spec: FT_METADATA_SPEC.to_string(),
-                    name: "Mock USDC".to_string(),
-                    symbol: "USDC".to_string(),
+                    name: "Nest Mock USD".to_string(),
+                    symbol: "nUSD".to_string(),
                     icon: None,
                     reference: None,
                     reference_hash: None,

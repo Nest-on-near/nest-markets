@@ -13,7 +13,9 @@ export const mockMarkets: MarketView[] = [
     outcome: null,
     yesReserve: '580000000',
     noReserve: '420000000',
-    volume: '2180000000',
+    yesPrice: '420000',
+    noPrice: '580000',
+    totalCollateral: '2180000000',
     feeBps: 200,
   },
   {
@@ -26,7 +28,9 @@ export const mockMarkets: MarketView[] = [
     outcome: null,
     yesReserve: '490000000',
     noReserve: '510000000',
-    volume: '1210000000',
+    yesPrice: '510000',
+    noPrice: '490000',
+    totalCollateral: '1210000000',
     feeBps: 200,
   },
   {
@@ -39,7 +43,9 @@ export const mockMarkets: MarketView[] = [
     outcome: null,
     yesReserve: '550000000',
     noReserve: '450000000',
-    volume: '3000000000',
+    yesPrice: '450000',
+    noPrice: '550000',
+    totalCollateral: '3000000000',
     feeBps: 200,
   },
 ];

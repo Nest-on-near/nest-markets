@@ -18,7 +18,9 @@ export interface MarketView {
   outcome: Outcome | null;
   yesReserve: string;
   noReserve: string;
-  volume: string;
+  yesPrice: string;
+  noPrice: string;
+  totalCollateral: string;
   feeBps: number;
 }
 
@@ -34,4 +36,13 @@ export interface PositionView {
   noBalance: string;
   yesValue: number;
   noValue: number;
+}
+
+export interface IndexedPricePoint {
+  blockHeight: number;
+  timestampMs: number;
+  yes: number;
+  no: number;
+  yesRaw: string;
+  noRaw: string;
 }

@@ -7,7 +7,7 @@ echo ""
 # Configuration
 NETWORK="${NETWORK:-testnet}"
 ORACLE="${ORACLE:-nest-oracle-3.testnet}"
-USDC="${USDC:-usdc.fakes.testnet}"
+USDC="${USDC:-nusd-token-1.testnet}"
 
 echo "Network: $NETWORK"
 echo "Oracle:  $ORACLE"
