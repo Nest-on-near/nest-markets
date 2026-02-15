@@ -6,9 +6,9 @@ use market_types::*;
 use crate::events::Event;
 use crate::{MarketContract, MarketContractExt};
 
-const GAS_FOR_BURN: Gas = Gas::from_tgas(10);
-const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(10);
-const GAS_FOR_REDEEM_CALLBACK: Gas = Gas::from_tgas(10);
+const GAS_FOR_BURN: Gas = Gas::from_tgas(20);
+const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(30);
+const GAS_FOR_REDEEM_CALLBACK: Gas = Gas::from_tgas(40);
 
 #[near]
 impl MarketContract {

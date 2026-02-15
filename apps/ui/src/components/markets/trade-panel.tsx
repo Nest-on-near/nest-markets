@@ -3,8 +3,15 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { DEFAULT_SLIPPAGE } from '@/config';
-import { buyOutcome, estimateBuyTokens, fetchCollateralBalance, fetchOutcomeBalance, sellOutcome } from '@/lib/markets';
-import type { Outcome } from '@/lib/types';
+import {
+  buyOutcome,
+  estimateBuyTokens,
+  fetchCollateralBalance,
+  fetchOutcomeBalance,
+  redeemWinningTokens,
+  sellOutcome,
+} from '@/lib/markets';
+import type { MarketStatus, Outcome } from '@/lib/types';
 
 interface WalletLike {
   callFunction: (args: {
@@ -23,10 +30,20 @@ interface TradePanelProps {
   marketId: number;
   yesPrice: number;
   noPrice: number;
+  marketStatus: MarketStatus;
+  settledOutcome: Outcome | null;
   onTradeComplete: () => Promise<void>;
 }
 
-export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplete }: TradePanelProps) {
+export function TradePanel({
+  wallet,
+  marketId,
+  yesPrice,
+  noPrice,
+  marketStatus,
+  settledOutcome,
+  onTradeComplete,
+}: TradePanelProps) {
   const [mode, setMode] = useState<'Buy' | 'Sell'>('Buy');
   const [outcome, setOutcome] = useState<Outcome>('Yes');
   const [amount, setAmount] = useState('10');
@@ -38,6 +55,8 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
   const [yesBalance, setYesBalance] = useState(0);
   const [noBalance, setNoBalance] = useState(0);
   const [error, setError] = useState('');
+  const isSettled = marketStatus === 'Settled';
+  const redeemOutcome = settledOutcome;
 
   const selectedPrice = outcome === 'Yes' ? yesPrice : noPrice;
 
@@ -51,11 +70,17 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
     return mode === 'Buy' ? value / (selectedPrice / 100) : value * (selectedPrice / 100);
   }, [amount, mode, selectedPrice]);
   const [estimate, setEstimate] = useState(0);
-  const availableAmount = mode === 'Buy'
-    ? collateralBalance
-    : outcome === 'Yes'
+  const availableAmount = isSettled
+    ? redeemOutcome === 'Yes'
       ? yesBalance
-      : noBalance;
+      : redeemOutcome === 'No'
+        ? noBalance
+        : 0
+    : mode === 'Buy'
+      ? collateralBalance
+      : outcome === 'Yes'
+        ? yesBalance
+        : noBalance;
 
   async function loadBalances() {
     if (!wallet.signedAccountId) {
@@ -81,6 +106,12 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
   }
 
   useEffect(() => {
+    if (isSettled) {
+      const redeemValue = Number(amount);
+      setEstimate(Number.isFinite(redeemValue) && redeemValue > 0 ? redeemValue : 0);
+      return;
+    }
+
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) {
       setEstimate(0);
@@ -115,7 +146,7 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
     return () => {
       cancelled = true;
     };
-  }, [amount, localEstimate, marketId, mode, outcome, wallet]);
+  }, [amount, isSettled, localEstimate, marketId, mode, outcome, wallet]);
 
   useEffect(() => {
     loadBalances();
@@ -145,12 +176,21 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
       setError('Enter a valid amount.');
       return;
     }
+    if (amountNumber > availableAmount) {
+      setError('Amount exceeds available balance.');
+      return;
+    }
 
     setPending(true);
     setError('');
 
     try {
-      if (mode === 'Buy') {
+      if (isSettled) {
+        await redeemWinningTokens(wallet, {
+          marketId,
+          amount: amountNumber,
+        });
+      } else if (mode === 'Buy') {
         await buyOutcome(wallet, {
           marketId,
           outcome,
@@ -177,25 +217,42 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
 
   return (
     <section className="card trade-panel">
-      <h2>Trade</h2>
+      <h2>{isSettled ? 'Redeem' : 'Trade'}</h2>
 
-      <div className="segmented">
-        <button className={mode === 'Buy' ? 'active' : ''} onClick={() => setMode('Buy')} type="button">
-          Buy
-        </button>
-        <button className={mode === 'Sell' ? 'active' : ''} onClick={() => setMode('Sell')} type="button">
-          Sell
-        </button>
-      </div>
+      {isSettled ? (
+        <p className="muted">
+          Market is settled. Redeem {redeemOutcome ?? 'winning'} tokens for nUSD.
+        </p>
+      ) : (
+        <div className="segmented">
+          <button className={mode === 'Buy' ? 'active' : ''} onClick={() => setMode('Buy')} type="button">
+            Buy
+          </button>
+          <button className={mode === 'Sell' ? 'active' : ''} onClick={() => setMode('Sell')} type="button">
+            Sell
+          </button>
+        </div>
+      )}
 
-      <div className="segmented">
-        <button className={outcome === 'Yes' ? 'active yes-button' : 'yes-button'} onClick={() => setOutcome('Yes')} type="button">
-          YES
-        </button>
-        <button className={outcome === 'No' ? 'active no-button' : 'no-button'} onClick={() => setOutcome('No')} type="button">
-          NO
-        </button>
-      </div>
+      {isSettled ? (
+        <div className="segmented">
+          <button className={redeemOutcome === 'Yes' ? 'active yes-button' : 'yes-button'} type="button" disabled>
+            YES
+          </button>
+          <button className={redeemOutcome === 'No' ? 'active no-button' : 'no-button'} type="button" disabled>
+            NO
+          </button>
+        </div>
+      ) : (
+        <div className="segmented">
+          <button className={outcome === 'Yes' ? 'active yes-button' : 'yes-button'} onClick={() => setOutcome('Yes')} type="button">
+            YES
+          </button>
+          <button className={outcome === 'No' ? 'active no-button' : 'no-button'} onClick={() => setOutcome('No')} type="button">
+            NO
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="trade-balance-grid">
@@ -214,7 +271,7 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
         </div>
 
         <label>
-          {mode === 'Buy' ? 'Spend (USDC)' : 'Tokens'}
+          {isSettled ? 'Redeem Tokens' : mode === 'Buy' ? 'Spend (USDC)' : 'Tokens'}
           <input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0" step="0.01" />
         </label>
 
@@ -231,24 +288,26 @@ export function TradePanel({ wallet, marketId, yesPrice, noPrice, onTradeComplet
             </button>
           ))}
           <span className="muted">
-            Available {mode === 'Buy' ? 'nUSD' : outcome}: {availableAmount.toFixed(2)}
+            Available {isSettled ? redeemOutcome ?? 'winning' : mode === 'Buy' ? 'nUSD' : outcome}: {availableAmount.toFixed(2)}
           </span>
         </div>
 
-        <label>
-          Slippage (%)
-          <input value={slippage} onChange={(event) => setSlippage(event.target.value)} type="number" min="0" step="0.1" />
-        </label>
+        {!isSettled ? (
+          <label>
+            Slippage (%)
+            <input value={slippage} onChange={(event) => setSlippage(event.target.value)} type="number" min="0" step="0.1" />
+          </label>
+        ) : null}
 
         <p className="muted">
-          Estimated {mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}
-          {mode === 'Buy' && estimating ? ' (updating...)' : ''}
+          Estimated {isSettled ? 'nUSD out' : mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}
+          {!isSettled && mode === 'Buy' && estimating ? ' (updating...)' : ''}
         </p>
 
         {error ? <p className="error-text">{error}</p> : null}
 
         <button type="submit" disabled={pending} className="cta-button">
-          {pending ? 'Submitting...' : `${mode} ${outcome}`}
+          {pending ? 'Submitting...' : isSettled ? `Redeem ${redeemOutcome ?? ''}`.trim() : `${mode} ${outcome}`}
         </button>
       </form>
     </section>

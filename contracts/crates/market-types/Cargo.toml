@@ -7,3 +7,4 @@ edition.workspace = true
 near-sdk = { workspace = true }
 serde = { workspace = true }
 borsh = "1.6"
+hex = { workspace = true }

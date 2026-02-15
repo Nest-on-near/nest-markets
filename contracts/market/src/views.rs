@@ -27,12 +27,7 @@ impl MarketContract {
         )
     }
 
-    pub fn estimate_buy(
-        &self,
-        market_id: MarketId,
-        outcome: Outcome,
-        collateral_in: U128,
-    ) -> U128 {
+    pub fn estimate_buy(&self, market_id: MarketId, outcome: Outcome, collateral_in: U128) -> U128 {
         let market = self.markets.get(&market_id).expect("Market not found");
         let collateral_in = collateral_in.0;
 
@@ -72,6 +67,32 @@ impl MarketContract {
             oracle: self.oracle.clone(),
             market_count: U64(self.market_count),
             default_fee_bps: DEFAULT_FEE_BPS,
+        }
+    }
+
+    pub fn get_resolution_status(&self, market_id: MarketId) -> ResolutionStatusView {
+        let market = self.markets.get(&market_id).expect("Market not found");
+        let now = near_sdk::env::block_timestamp();
+        let is_resolvable_now = now >= market.resolution_time_ns
+            && (market.status == MarketStatus::Open || market.status == MarketStatus::Closed);
+        let is_disputable_now = market.status == MarketStatus::Resolving
+            && market
+                .assertion_expires_at_ns
+                .map(|expiry| now < expiry)
+                .unwrap_or(false);
+
+        ResolutionStatusView {
+            market_id: U64(market_id),
+            status: market.status,
+            active_assertion_id: market.assertion_id.map(hex::encode),
+            asserted_outcome: market.asserted_outcome,
+            resolver: market.resolver.clone(),
+            disputer: market.disputer.clone(),
+            assertion_submitted_at_ns: market.assertion_submitted_at_ns.map(U64),
+            assertion_expires_at_ns: market.assertion_expires_at_ns.map(U64),
+            now_ns: U64(now),
+            is_disputable_now,
+            is_resolvable_now,
         }
     }
 }

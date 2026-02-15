@@ -142,6 +142,40 @@ pub struct TradesResponse {
     pub trades: Vec<TradeResponseItem>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct MarketActivityItem {
+    pub event_type: String,
+    pub block_height: u64,
+    pub block_timestamp_ns: String,
+    pub timestamp_ms: i64,
+    pub transaction_id: String,
+    pub receipt_id: String,
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MarketActivityResponse {
+    pub market_id: u64,
+    pub items: Vec<MarketActivityItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResolutionStatusResponse {
+    pub market_id: u64,
+    pub status: String,
+    pub outcome: Option<String>,
+    pub assertion_id: Option<String>,
+    pub resolver: Option<String>,
+    pub disputer: Option<String>,
+    pub submitted_block_height: Option<u64>,
+    pub disputed_block_height: Option<u64>,
+    pub settled_block_height: Option<u64>,
+    pub submitted_timestamp_ns: Option<String>,
+    pub disputed_timestamp_ns: Option<String>,
+    pub settled_timestamp_ns: Option<String>,
+    pub liveness_deadline_ns: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveTradeEvent {
     pub market_id: u64,

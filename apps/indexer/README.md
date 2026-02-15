@@ -26,7 +26,7 @@ Indexed event types:
 DATABASE_URL=sqlite:nest-market-indexer.db?mode=rwc
 BIND_ADDRESS=127.0.0.1:3002
 NETWORK=testnet
-MARKET_CONTRACT_ID=nest-market-2.testnet
+MARKET_CONTRACT_ID=market7-260215a.testnet
 EVENT_STANDARD=nest-markets
 RUST_LOG=info
 ```

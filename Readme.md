@@ -10,9 +10,9 @@ This repository is organized as a monorepo for the full prediction market stack:
 
 | Contract       | Account                    |
 | -------------- | -------------------------- |
-| Outcome Token  | `outcome-token-2.testnet`  |
-| Market         | `nest-market-2.testnet`    |
-| Oracle         | `nest-oracle-3.testnet`    |
+| Outcome Token  | `outcome5-260214.nest-creator-260214a.testnet`  |
+| Market         | `market5-260214.nest-creator-260214a.testnet`    |
+| Oracle         | `oracle5-260214.nest-creator-260214a.testnet`    |
 | nUSD (mock)    | `nusd-1.testnet`           |
 
 ## Quick Start

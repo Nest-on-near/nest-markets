@@ -24,7 +24,9 @@ pub const BPS_DENOMINATOR: u16 = 10_000;
 
 // ── Enums ──────────────────────────────────────────────────────────────
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 #[serde(crate = "near_sdk::serde")]
 pub enum Outcome {
     Yes,
@@ -40,7 +42,11 @@ impl Outcome {
     }
 
     pub fn from_bool(val: bool) -> Self {
-        if val { Outcome::Yes } else { Outcome::No }
+        if val {
+            Outcome::Yes
+        } else {
+            Outcome::No
+        }
     }
 
     pub fn opposite(&self) -> Self {
@@ -51,7 +57,9 @@ impl Outcome {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 #[serde(crate = "near_sdk::serde")]
 pub enum MarketStatus {
     Open,
@@ -90,6 +98,10 @@ pub struct Market {
     // Oracle
     pub assertion_id: Option<Bytes32>,
     pub asserted_outcome: Option<Outcome>,
+    pub resolver: Option<AccountId>,
+    pub disputer: Option<AccountId>,
+    pub assertion_submitted_at_ns: Option<u64>,
+    pub assertion_expires_at_ns: Option<u64>,
 }
 
 // ── View Types ─────────────────────────────────────────────────────────
@@ -112,6 +124,12 @@ pub struct MarketView {
     pub total_collateral: U128,
     pub fee_bps: u16,
     pub accrued_fees: U128,
+    pub assertion_id: Option<String>,
+    pub asserted_outcome: Option<Outcome>,
+    pub resolver: Option<AccountId>,
+    pub disputer: Option<AccountId>,
+    pub assertion_submitted_at_ns: Option<U64>,
+    pub assertion_expires_at_ns: Option<U64>,
 }
 
 impl Market {
@@ -142,8 +160,30 @@ impl Market {
             total_collateral: U128(self.total_collateral),
             fee_bps: self.fee_bps,
             accrued_fees: U128(self.accrued_fees),
+            assertion_id: self.assertion_id.map(hex::encode),
+            asserted_outcome: self.asserted_outcome,
+            resolver: self.resolver.clone(),
+            disputer: self.disputer.clone(),
+            assertion_submitted_at_ns: self.assertion_submitted_at_ns.map(U64),
+            assertion_expires_at_ns: self.assertion_expires_at_ns.map(U64),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ResolutionStatusView {
+    pub market_id: U64,
+    pub status: MarketStatus,
+    pub active_assertion_id: Option<String>,
+    pub asserted_outcome: Option<Outcome>,
+    pub resolver: Option<AccountId>,
+    pub disputer: Option<AccountId>,
+    pub assertion_submitted_at_ns: Option<U64>,
+    pub assertion_expires_at_ns: Option<U64>,
+    pub now_ns: U64,
+    pub is_disputable_now: bool,
+    pub is_resolvable_now: bool,
 }
 
 // ── FT Message Enums ───────────────────────────────────────────────────

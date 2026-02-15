@@ -22,6 +22,12 @@ export interface MarketView {
   noPrice: string;
   totalCollateral: string;
   feeBps: number;
+  assertionId: string | null;
+  assertedOutcome: Outcome | null;
+  resolver: string | null;
+  disputer: string | null;
+  assertionSubmittedAtNs: string | null;
+  assertionExpiresAtNs: string | null;
 }
 
 export interface PriceView {
@@ -45,4 +51,32 @@ export interface IndexedPricePoint {
   no: number;
   yesRaw: string;
   noRaw: string;
+}
+
+export interface MarketActivityItem {
+  eventType: string;
+  blockHeight: number;
+  timestampMs: number;
+  blockTimestampNs: string;
+  transactionId: string;
+  receiptId: string;
+  data: Record<string, unknown>;
+}
+
+export interface ResolutionStatusView {
+  marketId: number;
+  status: string;
+  outcome: Outcome | null;
+  assertionId: string | null;
+  resolver: string | null;
+  disputer: string | null;
+  submittedBlockHeight: number | null;
+  disputedBlockHeight: number | null;
+  settledBlockHeight: number | null;
+  submittedTimestampNs: string | null;
+  disputedTimestampNs: string | null;
+  settledTimestampNs: string | null;
+  livenessDeadlineNs: string | null;
+  isResolvableNow: boolean | null;
+  isDisputableNow: boolean | null;
 }

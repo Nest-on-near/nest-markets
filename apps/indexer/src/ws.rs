@@ -7,14 +7,16 @@ use tokio::sync::broadcast;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::db::{
-    insert_market_event, insert_price_point, upsert_market_projection, DbPool, EventInsert,
-    ProjectionUpdate,
+    insert_market_event, insert_price_point, upsert_lifecycle_projection, upsert_market_projection,
+    DbPool, EventInsert, LifecycleProjectionUpdate, ProjectionUpdate,
 };
 use crate::types::{
-    ns_string_to_ms, price_raw_to_float, LiquidityAddedEvent, LiquidityRemovedEvent, LiveTradeEvent,
-    LiveWsMessage, LogNep297Event, MarketCreatedEvent, MarketDisputedEvent, MarketSettledEvent,
-    RedeemedEvent, ResolutionSubmittedEvent, TradeEvent,
+    ns_string_to_ms, price_raw_to_float, LiquidityAddedEvent, LiquidityRemovedEvent,
+    LiveTradeEvent, LiveWsMessage, LogNep297Event, MarketCreatedEvent, MarketDisputedEvent,
+    MarketSettledEvent, RedeemedEvent, ResolutionSubmittedEvent, TradeEvent,
 };
+
+const DEFAULT_ORACLE_LIVENESS_NS: u64 = 2 * 60 * 60 * 1_000_000_000;
 
 #[derive(Clone)]
 pub struct EventListenerConfig {
@@ -27,7 +29,9 @@ fn build_filter(config: &EventListenerConfig) -> Operator {
     Operator::And(vec![
         Filter {
             path: "account_id".to_string(),
-            operator: Operator::Equals(serde_json::Value::String(config.market_contract_id.clone())),
+            operator: Operator::Equals(serde_json::Value::String(
+                config.market_contract_id.clone(),
+            )),
         },
         Filter {
             path: "event_standard".to_string(),
@@ -38,7 +42,9 @@ fn build_filter(config: &EventListenerConfig) -> Operator {
             operator: Operator::Or(vec![
                 Filter {
                     path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("market_created".to_string())),
+                    operator: Operator::Equals(serde_json::Value::String(
+                        "market_created".to_string(),
+                    )),
                 },
                 Filter {
                     path: "event_event".to_string(),
@@ -46,23 +52,33 @@ fn build_filter(config: &EventListenerConfig) -> Operator {
                 },
                 Filter {
                     path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("liquidity_added".to_string())),
+                    operator: Operator::Equals(serde_json::Value::String(
+                        "liquidity_added".to_string(),
+                    )),
                 },
                 Filter {
                     path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("liquidity_removed".to_string())),
+                    operator: Operator::Equals(serde_json::Value::String(
+                        "liquidity_removed".to_string(),
+                    )),
                 },
                 Filter {
                     path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("resolution_submitted".to_string())),
+                    operator: Operator::Equals(serde_json::Value::String(
+                        "resolution_submitted".to_string(),
+                    )),
                 },
                 Filter {
                     path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("market_disputed".to_string())),
+                    operator: Operator::Equals(serde_json::Value::String(
+                        "market_disputed".to_string(),
+                    )),
                 },
                 Filter {
                     path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("market_settled".to_string())),
+                    operator: Operator::Equals(serde_json::Value::String(
+                        "market_settled".to_string(),
+                    )),
                 },
                 Filter {
                     path: "event_event".to_string(),
@@ -251,8 +267,9 @@ async fn handle_event(
             .await?;
         }
         "resolution_submitted" => {
-            let payload: ResolutionSubmittedEvent = serde_json::from_value(event_data_inner.clone())?;
-            process_generic_event(
+            let payload: ResolutionSubmittedEvent =
+                serde_json::from_value(event_data_inner.clone())?;
+            let inserted = process_generic_event(
                 pool,
                 &event,
                 payload.market_id,
@@ -263,10 +280,32 @@ async fn handle_event(
                 &event_json,
             )
             .await?;
+            if inserted {
+                let submitted_ns = event.block_timestamp_nanosec.parse::<u64>().ok();
+                let liveness_deadline_ns =
+                    submitted_ns.map(|v| (v + DEFAULT_ORACLE_LIVENESS_NS).to_string());
+                upsert_lifecycle_projection(
+                    pool,
+                    &LifecycleProjectionUpdate {
+                        market_id: payload.market_id,
+                        assertion_id: Some(payload.assertion_id),
+                        resolver: Some(payload.resolver),
+                        disputer: None,
+                        submitted_block_height: Some(event.block_height),
+                        disputed_block_height: None,
+                        settled_block_height: None,
+                        submitted_timestamp_ns: Some(event.block_timestamp_nanosec.clone()),
+                        disputed_timestamp_ns: None,
+                        settled_timestamp_ns: None,
+                        liveness_deadline_ns,
+                    },
+                )
+                .await?;
+            }
         }
         "market_disputed" => {
             let payload: MarketDisputedEvent = serde_json::from_value(event_data_inner.clone())?;
-            process_generic_event(
+            let inserted = process_generic_event(
                 pool,
                 &event,
                 payload.market_id,
@@ -277,10 +316,29 @@ async fn handle_event(
                 &event_json,
             )
             .await?;
+            if inserted {
+                upsert_lifecycle_projection(
+                    pool,
+                    &LifecycleProjectionUpdate {
+                        market_id: payload.market_id,
+                        assertion_id: Some(payload.assertion_id),
+                        resolver: None,
+                        disputer: None,
+                        submitted_block_height: None,
+                        disputed_block_height: Some(event.block_height),
+                        settled_block_height: None,
+                        submitted_timestamp_ns: None,
+                        disputed_timestamp_ns: Some(event.block_timestamp_nanosec.clone()),
+                        settled_timestamp_ns: None,
+                        liveness_deadline_ns: None,
+                    },
+                )
+                .await?;
+            }
         }
         "market_settled" => {
             let payload: MarketSettledEvent = serde_json::from_value(event_data_inner.clone())?;
-            process_generic_event(
+            let inserted = process_generic_event(
                 pool,
                 &event,
                 payload.market_id,
@@ -291,6 +349,25 @@ async fn handle_event(
                 &event_json,
             )
             .await?;
+            if inserted {
+                upsert_lifecycle_projection(
+                    pool,
+                    &LifecycleProjectionUpdate {
+                        market_id: payload.market_id,
+                        assertion_id: None,
+                        resolver: None,
+                        disputer: None,
+                        submitted_block_height: None,
+                        disputed_block_height: None,
+                        settled_block_height: Some(event.block_height),
+                        submitted_timestamp_ns: None,
+                        disputed_timestamp_ns: None,
+                        settled_timestamp_ns: Some(event.block_timestamp_nanosec.clone()),
+                        liveness_deadline_ns: None,
+                    },
+                )
+                .await?;
+            }
         }
         "redeemed" => {
             let payload: RedeemedEvent = serde_json::from_value(event_data_inner.clone())?;

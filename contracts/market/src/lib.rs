@@ -66,12 +66,7 @@ impl MarketContract {
 
     // ── ft_on_transfer Router ──────────────────────────────────────────
 
-    pub fn ft_on_transfer(
-        &mut self,
-        sender_id: AccountId,
-        amount: U128,
-        msg: String,
-    ) -> U128 {
+    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> U128 {
         let token = env::predecessor_account_id();
         require!(token == self.usdc_token, "Only USDC is accepted");
 
@@ -105,10 +100,7 @@ impl MarketContract {
                 self.internal_add_liquidity(market_id, amount.0, sender_id);
                 U128(0)
             }
-            MarketFtMsg::SubmitResolution {
-                market_id,
-                outcome,
-            } => {
+            MarketFtMsg::SubmitResolution { market_id, outcome } => {
                 self.internal_submit_resolution(market_id, outcome, amount.0, sender_id);
                 U128(0)
             }
@@ -127,7 +119,10 @@ impl MarketContract {
     ) {
         require!(
             initial_liquidity >= MIN_INITIAL_LIQUIDITY,
-            format!("Minimum initial liquidity is {} USDC", MIN_INITIAL_LIQUIDITY / USDC_ONE)
+            format!(
+                "Minimum initial liquidity is {} USDC",
+                MIN_INITIAL_LIQUIDITY / USDC_ONE
+            )
         );
         require!(
             resolution_time_ns > env::block_timestamp(),
@@ -156,6 +151,10 @@ impl MarketContract {
             accrued_fees: 0,
             assertion_id: None,
             asserted_outcome: None,
+            resolver: None,
+            disputer: None,
+            assertion_submitted_at_ns: None,
+            assertion_expires_at_ns: None,
         };
 
         // Record LP position for creator
@@ -190,20 +189,19 @@ impl MarketContract {
                 GAS_FOR_MINT,
             )
             .and(
-                Promise::new(self.outcome_token.clone())
-                    .function_call(
-                        "mint".to_string(),
-                        near_sdk::serde_json::json!({
-                            "market_id": market_id,
-                            "outcome": Outcome::No,
-                            "account_id": contract_id,
-                            "amount": U128(half),
-                        })
-                        .to_string()
-                        .into_bytes(),
-                        NearToken::from_yoctonear(0),
-                        GAS_FOR_MINT,
-                    )
+                Promise::new(self.outcome_token.clone()).function_call(
+                    "mint".to_string(),
+                    near_sdk::serde_json::json!({
+                        "market_id": market_id,
+                        "outcome": Outcome::No,
+                        "account_id": contract_id,
+                        "amount": U128(half),
+                    })
+                    .to_string()
+                    .into_bytes(),
+                    NearToken::from_yoctonear(0),
+                    GAS_FOR_MINT,
+                ),
             );
     }
 }

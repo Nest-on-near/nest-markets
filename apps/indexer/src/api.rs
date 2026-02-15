@@ -15,7 +15,10 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::db::{self, DbPool};
-use crate::types::{HealthResponse, LimitQuery, LiveWsMessage, PriceHistoryResponse, TradesResponse};
+use crate::types::{
+    HealthResponse, LimitQuery, LiveWsMessage, MarketActivityResponse, PriceHistoryResponse,
+    TradesResponse,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -38,6 +41,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(health_check))
         .route("/markets/:id/price-history", get(get_price_history))
         .route("/markets/:id/trades", get(get_trades))
+        .route("/markets/:id/activity", get(get_market_activity))
+        .route("/markets/:id/resolution-status", get(get_resolution_status))
         .route("/ws", get(ws_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -67,7 +72,11 @@ async fn get_price_history(
     match db::get_price_history(&state.pool, market_id, limit).await {
         Ok(points) => Json(PriceHistoryResponse { market_id, points }).into_response(),
         Err(e) => {
-            log::error!("Error getting price history for market {}: {}", market_id, e);
+            log::error!(
+                "Error getting price history for market {}: {}",
+                market_id,
+                e
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": e.to_string() })),
@@ -97,12 +106,60 @@ async fn get_trades(
     }
 }
 
+async fn get_market_activity(
+    State(state): State<AppState>,
+    Path(market_id): Path<u64>,
+    Query(query): Query<LimitQuery>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(100).clamp(1, 1000);
+
+    match db::get_market_activity(&state.pool, market_id, limit).await {
+        Ok(items) => Json(MarketActivityResponse { market_id, items }).into_response(),
+        Err(e) => {
+            log::error!("Error getting activity for market {}: {}", market_id, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn get_resolution_status(
+    State(state): State<AppState>,
+    Path(market_id): Path<u64>,
+) -> impl IntoResponse {
+    match db::get_resolution_status(&state.pool, market_id).await {
+        Ok(Some(status)) => Json(status).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "market not found" })),
+        )
+            .into_response(),
+        Err(e) => {
+            log::error!(
+                "Error getting resolution status for market {}: {}",
+                market_id,
+                e
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    }
+}
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(query): Query<WsQuery>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state.broadcaster.subscribe(), query.market_id))
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, state.broadcaster.subscribe(), query.market_id)
+    })
 }
 
 async fn handle_socket(
