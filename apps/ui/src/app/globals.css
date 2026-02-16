@@ -585,6 +585,31 @@ button {
   padding: 0.45rem 0.55rem;
 }
 
+.trade-price-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trade-price-card {
+  border: 1px solid #e1ddcf;
+  border-radius: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.trade-price-card--selected {
+  border-color: #b7d2ff;
+  box-shadow: 0 0 0 1px rgba(78, 121, 255, 0.16) inset;
+}
+
+.trade-estimate-grid {
+  display: grid;
+  gap: 0.2rem;
+}
+
 .percent-row {
   align-items: center;
   display: flex;

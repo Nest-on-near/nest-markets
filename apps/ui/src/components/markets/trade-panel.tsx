@@ -59,6 +59,7 @@ export function TradePanel({
   const redeemOutcome = settledOutcome;
 
   const selectedPrice = outcome === 'Yes' ? yesPrice : noPrice;
+  const oppositePrice = outcome === 'Yes' ? noPrice : yesPrice;
 
   const localEstimate = useMemo(() => {
     const value = Number(amount);
@@ -81,6 +82,25 @@ export function TradePanel({
       : outcome === 'Yes'
         ? yesBalance
         : noBalance;
+
+  const amountNumber = Number(amount);
+  const hasValidAmount = Number.isFinite(amountNumber) && amountNumber > 0;
+
+  const averageFillPrice = useMemo(() => {
+    if (!hasValidAmount || mode !== 'Buy' || isSettled || estimate <= 0) {
+      return 0;
+    }
+
+    return amountNumber / estimate;
+  }, [amountNumber, estimate, hasValidAmount, isSettled, mode]);
+
+  const maxPayoutIfCorrect = useMemo(() => {
+    if (mode !== 'Buy' || isSettled || estimate <= 0) {
+      return 0;
+    }
+
+    return estimate;
+  }, [estimate, isSettled, mode]);
 
   async function loadBalances() {
     if (!wallet.signedAccountId) {
@@ -224,14 +244,27 @@ export function TradePanel({
           Market is settled. Redeem {redeemOutcome ?? 'winning'} tokens for nUSD.
         </p>
       ) : (
-        <div className="segmented">
-          <button className={mode === 'Buy' ? 'active' : ''} onClick={() => setMode('Buy')} type="button">
-            Buy
-          </button>
-          <button className={mode === 'Sell' ? 'active' : ''} onClick={() => setMode('Sell')} type="button">
-            Sell
-          </button>
-        </div>
+        <>
+          <div className="segmented">
+            <button className={mode === 'Buy' ? 'active' : ''} onClick={() => setMode('Buy')} type="button">
+              Buy
+            </button>
+            <button className={mode === 'Sell' ? 'active' : ''} onClick={() => setMode('Sell')} type="button">
+              Sell
+            </button>
+          </div>
+
+          <div className="trade-price-grid" aria-label="Current market prices">
+            <div className={`trade-price-card ${outcome === 'Yes' ? 'trade-price-card--selected' : ''}`}>
+              <span className="muted">Yes Price</span>
+              <strong className="yes-text">{yesPrice.toFixed(2)}%</strong>
+            </div>
+            <div className={`trade-price-card ${outcome === 'No' ? 'trade-price-card--selected' : ''}`}>
+              <span className="muted">No Price</span>
+              <strong className="no-text">{noPrice.toFixed(2)}%</strong>
+            </div>
+          </div>
+        </>
       )}
 
       {isSettled ? (
@@ -303,6 +336,15 @@ export function TradePanel({
           Estimated {isSettled ? 'nUSD out' : mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}
           {!isSettled && mode === 'Buy' && estimating ? ' (updating...)' : ''}
         </p>
+
+        {!isSettled && mode === 'Buy' ? (
+          <div className="trade-estimate-grid">
+            <span className="muted">Current {outcome} price: {selectedPrice.toFixed(2)}%</span>
+            <span className="muted">Opposite price: {oppositePrice.toFixed(2)}%</span>
+            <span className="muted">Avg fill price: {averageFillPrice.toFixed(3)} nUSD/token</span>
+            <span className="muted">Max payout if correct: {maxPayoutIfCorrect.toFixed(2)} nUSD</span>
+          </div>
+        ) : null}
 
         {error ? <p className="error-text">{error}</p> : null}
 

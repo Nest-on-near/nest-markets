@@ -12,9 +12,11 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { formatResolutionTime, formatUsd } from '@/lib/format';
 import {
   disputeAssertion,
+  fetchAssertionBondAmount,
   fetchDisputeRequestIdHex,
   fetchMarketActivity,
   fetchMarketById,
+  fetchMinimumBondAmount,
   fetchResolutionStatus,
   getPrices,
   submitResolution,
@@ -35,9 +37,9 @@ export default function MarketDetailPage() {
   const [actionError, setActionError] = useState('');
   const [resolutionPending, setResolutionPending] = useState(false);
   const [disputePending, setDisputePending] = useState(false);
-  const [resolutionBond, setResolutionBond] = useState('10');
+  const [resolutionBondAmount, setResolutionBondAmount] = useState<number | null>(null);
   const [resolutionOutcome, setResolutionOutcome] = useState<Outcome>('Yes');
-  const [disputeBond, setDisputeBond] = useState('10');
+  const [disputeBondAmount, setDisputeBondAmount] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const [activePanel, setActivePanel] = useState<'Trade' | 'Resolution'>('Trade');
   const [dvmRequestIdHex, setDvmRequestIdHex] = useState<string | null>(null);
@@ -49,12 +51,24 @@ export default function MarketDetailPage() {
     setMarket(nextMarket);
     if (nextMarket) {
       try {
-        const [status, timeline] = await Promise.all([
+        const [status, timeline, minimumBond] = await Promise.all([
           fetchResolutionStatus(marketId),
           fetchMarketActivity(marketId, 100),
+          fetchMinimumBondAmount(wallet),
         ]);
         setResolutionStatus(status);
         setActivity(timeline);
+        setResolutionBondAmount(minimumBond);
+        if (status.assertionId) {
+          try {
+            const exactDisputeBond = await fetchAssertionBondAmount(wallet, status.assertionId);
+            setDisputeBondAmount(exactDisputeBond);
+          } catch {
+            setDisputeBondAmount(minimumBond);
+          }
+        } else {
+          setDisputeBondAmount(minimumBond);
+        }
       } catch (error) {
         setLifecycleError(error instanceof Error ? error.message : 'Failed to load lifecycle data.');
       }
@@ -101,14 +115,26 @@ export default function MarketDetailPage() {
     const timer = window.setInterval(async () => {
       if (!Number.isFinite(marketId)) return;
       try {
-        const [nextMarket, status, timeline] = await Promise.all([
+        const [nextMarket, status, timeline, minimumBond] = await Promise.all([
           fetchMarketById(wallet, marketId),
           fetchResolutionStatus(marketId),
           fetchMarketActivity(marketId, 100),
+          fetchMinimumBondAmount(wallet),
         ]);
         setMarket(nextMarket);
         setResolutionStatus(status);
         setActivity(timeline);
+        setResolutionBondAmount(minimumBond);
+        if (status.assertionId) {
+          try {
+            const exactDisputeBond = await fetchAssertionBondAmount(wallet, status.assertionId);
+            setDisputeBondAmount(exactDisputeBond);
+          } catch {
+            setDisputeBondAmount(minimumBond);
+          }
+        } else {
+          setDisputeBondAmount(minimumBond);
+        }
       } catch {
         // Keep existing state; transient indexer/network issues should not wipe UI.
       }
@@ -175,16 +201,19 @@ export default function MarketDetailPage() {
       return;
     }
 
-    const bond = Number(resolutionBond);
-    if (!Number.isFinite(bond) || bond <= 0) {
-      setActionError('Resolution bond must be a positive number.');
+    if (resolutionBondAmount === null || resolutionBondAmount <= 0) {
+      setActionError('Required resolution bond is unavailable.');
       return;
     }
 
     setActionError('');
     setResolutionPending(true);
     try {
-      await submitResolution(wallet, { marketId: market.id, outcome: resolutionOutcome, bondAmount: bond });
+      await submitResolution(wallet, {
+        marketId: market.id,
+        outcome: resolutionOutcome,
+        bondAmount: resolutionBondAmount,
+      });
       await loadMarket();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Resolution transaction failed.');
@@ -204,16 +233,18 @@ export default function MarketDetailPage() {
       return;
     }
 
-    const bond = Number(disputeBond);
-    if (!Number.isFinite(bond) || bond <= 0) {
-      setActionError('Dispute bond must be a positive number.');
+    if (disputeBondAmount === null || disputeBondAmount <= 0) {
+      setActionError('Required dispute bond is unavailable.');
       return;
     }
 
     setActionError('');
     setDisputePending(true);
     try {
-      await disputeAssertion(wallet, { assertionIdHex: resolutionStatus.assertionId, bondAmount: bond });
+      await disputeAssertion(wallet, {
+        assertionIdHex: resolutionStatus.assertionId,
+        bondAmount: disputeBondAmount,
+      });
       await loadMarket();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Dispute transaction failed.');
@@ -317,31 +348,31 @@ export default function MarketDetailPage() {
                   <option value="No">No</option>
                 </select>
               </label>
-              <label>
-                Resolution Bond (USDC)
-                <input
-                  value={resolutionBond}
-                  onChange={(event) => setResolutionBond(event.target.value)}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  disabled={!canSubmitResolution || resolutionPending}
-                />
-              </label>
-              <button type="submit" className="cta-button" disabled={resolutionPending || !canSubmitResolution}>
+              <p className="muted">
+                Required bond: {resolutionBondAmount === null ? 'Loading...' : `${formatUsd(resolutionBondAmount)} USDC`}
+              </p>
+              <button
+                type="submit"
+                className="cta-button"
+                disabled={resolutionPending || !canSubmitResolution || resolutionBondAmount === null}
+              >
                 {resolutionPending ? 'Submitting...' : 'Submit Resolution'}
               </button>
             </form>
 
             <form onSubmit={handleDispute}>
-              <label>
-                Dispute Bond (USDC)
-                <input value={disputeBond} onChange={(event) => setDisputeBond(event.target.value)} type="number" min="0" step="0.01" />
-              </label>
+              <p className="muted">
+                Required dispute bond: {disputeBondAmount === null ? 'Loading...' : `${formatUsd(disputeBondAmount)} USDC`}
+              </p>
               <button
                 type="submit"
                 className="cta-button"
-                disabled={disputePending || !resolutionStatus?.assertionId || resolutionStatus.status.toLowerCase() !== 'resolving'}
+                disabled={
+                  disputePending
+                  || !resolutionStatus?.assertionId
+                  || resolutionStatus.status.toLowerCase() !== 'resolving'
+                  || disputeBondAmount === null
+                }
               >
                 {disputePending ? 'Submitting...' : 'Dispute Assertion'}
               </button>

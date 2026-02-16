@@ -64,6 +64,51 @@ impl MarketContract {
         }
     }
 
+    // ── Admin / Emergency Controls ─────────────────────────────────────
+
+    /// Transfer contract ownership.
+    pub fn set_owner(&mut self, new_owner: AccountId) {
+        self.assert_owner();
+        self.owner = new_owner;
+    }
+
+    /// Emergency token withdrawal for stuck funds recovery.
+    /// Owner-only: this can move core funds and should only be used operationally.
+    pub fn emergency_withdraw_token(
+        &mut self,
+        token: AccountId,
+        receiver_id: AccountId,
+        amount: U128,
+    ) -> Promise {
+        self.assert_owner();
+        require!(amount.0 > 0, "Amount must be positive");
+
+        Promise::new(token).function_call(
+            "ft_transfer".to_string(),
+            near_sdk::serde_json::json!({
+                "receiver_id": receiver_id,
+                "amount": amount,
+            })
+            .to_string()
+            .into_bytes(),
+            NearToken::from_yoctonear(1),
+            Gas::from_tgas(10),
+        )
+    }
+
+    /// Emergency native NEAR withdrawal for stuck balance recovery.
+    /// Owner-only.
+    pub fn emergency_withdraw_near(&mut self, receiver_id: AccountId, amount: U128) -> Promise {
+        self.assert_owner();
+        require!(amount.0 > 0, "Amount must be positive");
+        require!(
+            env::account_balance() >= NearToken::from_yoctonear(amount.0),
+            "Insufficient balance"
+        );
+
+        Promise::new(receiver_id).transfer(NearToken::from_yoctonear(amount.0))
+    }
+
     // ── ft_on_transfer Router ──────────────────────────────────────────
 
     pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> U128 {
@@ -203,5 +248,12 @@ impl MarketContract {
                     GAS_FOR_MINT,
                 ),
             );
+    }
+
+    fn assert_owner(&self) {
+        require!(
+            env::predecessor_account_id() == self.owner,
+            "Only owner can call this method"
+        );
     }
 }

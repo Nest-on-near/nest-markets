@@ -393,6 +393,35 @@ export async function submitResolution(wallet: WalletLike, params: {
   });
 }
 
+export async function fetchMinimumBondAmount(wallet: WalletLike): Promise<number> {
+  const raw = await wallet.viewFunction({
+    contractId: CONTRACTS.oracle,
+    method: 'get_minimum_bond',
+    args: {
+      currency: CONTRACTS.usdc,
+    },
+  });
+
+  return fromChainAmount(unwrapNearNumber(raw, '0'));
+}
+
+export async function fetchAssertionBondAmount(wallet: WalletLike, assertionIdHex: string): Promise<number> {
+  const raw = await wallet.viewFunction({
+    contractId: CONTRACTS.oracle,
+    method: 'get_assertion',
+    args: {
+      assertion_id: hexToBytes32(assertionIdHex),
+    },
+  });
+
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Assertion not found');
+  }
+
+  const bond = (raw as Record<string, unknown>).bond;
+  return fromChainAmount(unwrapNearNumber(bond, '0'));
+}
+
 export async function disputeAssertion(wallet: WalletLike, params: {
   assertionIdHex: string;
   bondAmount: number;

@@ -1,10 +1,14 @@
 use near_sdk::json_types::U128;
-use near_sdk::{env, near, require, AccountId, Gas, NearToken, Promise};
+use near_sdk::{env, near, require, AccountId, Gas, NearToken, Promise, PromiseResult};
 
 use market_types::*;
 
 use crate::events::Event;
 use crate::{MarketContract, MarketContractExt, GAS_FOR_MINT};
+
+const GAS_FOR_SELL_BURN_CALLBACK: Gas = Gas::from_tgas(15);
+const GAS_FOR_REMOVE_LIQUIDITY_BURN_CALLBACK: Gas = Gas::from_tgas(15);
+const GAS_FOR_FT_TRANSFER: Gas = Gas::from_tgas(10);
 
 #[near]
 impl MarketContract {
@@ -183,19 +187,46 @@ impl MarketContract {
                 GAS_FOR_MINT,
             )
             .then(
-                Promise::new(self.usdc_token.clone())
+                Promise::new(env::current_account_id())
                     .function_call(
-                        "ft_transfer".to_string(),
+                        "on_sell_burn_complete".to_string(),
                         near_sdk::serde_json::json!({
-                            "receiver_id": seller,
+                            "seller": seller,
                             "amount": U128(collateral_out),
                         })
                         .to_string()
                         .into_bytes(),
-                        NearToken::from_yoctonear(1),
-                        Gas::from_tgas(10),
+                        NearToken::from_yoctonear(0),
+                        GAS_FOR_SELL_BURN_CALLBACK,
                     )
             );
+    }
+
+    #[private]
+    pub fn on_sell_burn_complete(&mut self, seller: AccountId, amount: U128) {
+        require!(
+            env::promise_results_count() == 1,
+            "Expected one promise result"
+        );
+
+        match env::promise_result(0) {
+            PromiseResult::Successful(_) => {
+                Promise::new(self.usdc_token.clone()).function_call(
+                    "ft_transfer".to_string(),
+                    near_sdk::serde_json::json!({
+                        "receiver_id": seller,
+                        "amount": amount,
+                    })
+                    .to_string()
+                    .into_bytes(),
+                    NearToken::from_yoctonear(1),
+                    GAS_FOR_FT_TRANSFER,
+                );
+            }
+            _ => {
+                env::panic_str("Token burn failed, cannot settle sell");
+            }
+        }
     }
 
     // ── Add Liquidity ──────────────────────────────────────────────────
@@ -345,19 +376,45 @@ impl MarketContract {
                     )
             )
             .then(
-                Promise::new(self.usdc_token.clone())
+                Promise::new(env::current_account_id())
                     .function_call(
-                        "ft_transfer".to_string(),
+                        "on_remove_liquidity_burn_complete".to_string(),
                         near_sdk::serde_json::json!({
-                            "receiver_id": provider,
+                            "provider": provider,
                             "amount": U128(collateral_out),
                         })
                         .to_string()
                         .into_bytes(),
-                        NearToken::from_yoctonear(1),
-                        Gas::from_tgas(10),
+                        NearToken::from_yoctonear(0),
+                        GAS_FOR_REMOVE_LIQUIDITY_BURN_CALLBACK,
                     )
             );
+    }
+
+    #[private]
+    pub fn on_remove_liquidity_burn_complete(&mut self, provider: AccountId, amount: U128) {
+        require!(
+            env::promise_results_count() == 2,
+            "Expected two promise results"
+        );
+        let first_ok = matches!(env::promise_result(0), PromiseResult::Successful(_));
+        let second_ok = matches!(env::promise_result(1), PromiseResult::Successful(_));
+
+        if !first_ok || !second_ok {
+            env::panic_str("Token burn failed, cannot remove liquidity");
+        }
+
+        Promise::new(self.usdc_token.clone()).function_call(
+            "ft_transfer".to_string(),
+            near_sdk::serde_json::json!({
+                "receiver_id": provider,
+                "amount": amount,
+            })
+            .to_string()
+            .into_bytes(),
+            NearToken::from_yoctonear(1),
+            GAS_FOR_FT_TRANSFER,
+        );
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -367,5 +424,154 @@ impl MarketContract {
         key.extend_from_slice(&market_id.to_le_bytes());
         key.extend_from_slice(account.as_str().as_bytes());
         key
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::store::LookupMap;
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::testing_env;
+
+    fn account(id: &str) -> AccountId {
+        id.parse().unwrap()
+    }
+
+    fn set_context_with_results(
+        predecessor: &str,
+        current: &str,
+        promise_results: Vec<PromiseResult>,
+    ) {
+        let mut builder = VMContextBuilder::new();
+        builder
+            .predecessor_account_id(account(predecessor))
+            .current_account_id(account(current));
+
+        testing_env!(
+            builder.build(),
+            near_sdk::test_vm_config(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            promise_results
+        );
+    }
+
+    fn test_contract() -> MarketContract {
+        MarketContract {
+            owner: account("owner.testnet"),
+            usdc_token: account("usdc.testnet"),
+            outcome_token: account("outcome.testnet"),
+            oracle: account("oracle.testnet"),
+            markets: LookupMap::new(b"m"),
+            market_count: 0,
+            lp_positions: LookupMap::new(b"l"),
+            assertion_to_market: LookupMap::new(b"a"),
+        }
+    }
+
+    fn base_market(id: u64, creator: &str) -> Market {
+        Market {
+            id,
+            question: "Will test pass?".to_string(),
+            description: "test".to_string(),
+            creator: account(creator),
+            resolution_time_ns: 999_999_999_999,
+            status: MarketStatus::Open,
+            outcome: None,
+            yes_reserve: 50 * USDC_ONE,
+            no_reserve: 50 * USDC_ONE,
+            total_lp_shares: 100 * USDC_ONE,
+            total_collateral: 100 * USDC_ONE,
+            fee_bps: DEFAULT_FEE_BPS,
+            accrued_fees: 0,
+            assertion_id: None,
+            asserted_outcome: None,
+            resolver: None,
+            disputer: None,
+            assertion_submitted_at_ns: None,
+            assertion_expires_at_ns: None,
+        }
+    }
+
+    #[test]
+    fn sell_updates_market_state_and_fees() {
+        let mut contract = test_contract();
+        contract.markets.insert(0, base_market(0, "creator.testnet"));
+        set_context_with_results("seller.testnet", "market.testnet", vec![]);
+
+        contract.sell(0, Outcome::Yes, U128(10 * USDC_ONE), U128(0));
+
+        let market = contract.markets.get(&0).expect("market exists");
+        assert!(market.total_collateral < 100 * USDC_ONE);
+        assert!(market.accrued_fees > 0);
+    }
+
+    #[test]
+    fn remove_liquidity_updates_market_and_lp_position() {
+        let mut contract = test_contract();
+        contract.markets.insert(0, base_market(0, "lp.testnet"));
+        let key = MarketContract::lp_key(0, &account("lp.testnet"));
+        contract.lp_positions.insert(key, 100 * USDC_ONE);
+        set_context_with_results("lp.testnet", "market.testnet", vec![]);
+
+        contract.remove_liquidity(0, U128(20 * USDC_ONE));
+
+        let market = contract.markets.get(&0).expect("market exists");
+        assert!(market.total_lp_shares < 100 * USDC_ONE);
+        assert!(market.total_collateral < 100 * USDC_ONE);
+    }
+
+    #[test]
+    fn on_sell_burn_complete_succeeds_on_successful_burn() {
+        let mut contract = test_contract();
+        set_context_with_results(
+            "market.testnet",
+            "market.testnet",
+            vec![PromiseResult::Successful(vec![])],
+        );
+
+        contract.on_sell_burn_complete(account("seller.testnet"), U128(10 * USDC_ONE));
+    }
+
+    #[test]
+    #[should_panic(expected = "Token burn failed, cannot settle sell")]
+    fn on_sell_burn_complete_panics_on_failed_burn() {
+        let mut contract = test_contract();
+        set_context_with_results(
+            "market.testnet",
+            "market.testnet",
+            vec![PromiseResult::Failed],
+        );
+
+        contract.on_sell_burn_complete(account("seller.testnet"), U128(10 * USDC_ONE));
+    }
+
+    #[test]
+    fn on_remove_liquidity_burn_complete_succeeds_when_both_burns_succeed() {
+        let mut contract = test_contract();
+        set_context_with_results(
+            "market.testnet",
+            "market.testnet",
+            vec![
+                PromiseResult::Successful(vec![]),
+                PromiseResult::Successful(vec![]),
+            ],
+        );
+
+        contract.on_remove_liquidity_burn_complete(account("lp.testnet"), U128(5 * USDC_ONE));
+    }
+
+    #[test]
+    #[should_panic(expected = "Token burn failed, cannot remove liquidity")]
+    fn on_remove_liquidity_burn_complete_panics_if_any_burn_fails() {
+        let mut contract = test_contract();
+        set_context_with_results(
+            "market.testnet",
+            "market.testnet",
+            vec![PromiseResult::Successful(vec![]), PromiseResult::Failed],
+        );
+
+        contract.on_remove_liquidity_burn_complete(account("lp.testnet"), U128(5 * USDC_ONE));
     }
 }
