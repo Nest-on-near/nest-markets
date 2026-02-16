@@ -10,13 +10,16 @@ This repository is organized as a monorepo for the full prediction market stack:
 
 | Contract       | Account                    |
 | -------------- | -------------------------- |
-| Outcome Token  | `outcome5-260214.nest-creator-260214a.testnet`  |
-| Market         | `market5-260214.nest-creator-260214a.testnet`    |
-| Oracle         | `oracle5-260214.nest-creator-260214a.testnet`    |
-| nUSD (mock)    | `nusd-1.testnet`           |
+| Outcome Token  | `<your-outcome-token-account>` |
+| Market         | `<your-market-account>` |
+| Oracle (from nest-contracts) | `nest-oracle-6.testnet` |
+| nUSD (mock)    | `<your-nusd-account>` |
+
+Use `POST_DEPLOYMENT.md` with your deployed account IDs for exact wiring steps.
 
 ## Quick Start
 
 - Contracts docs and commands: `contracts/Readme.md`
+- Post-deployment wiring checklist: `POST_DEPLOYMENT.md`
 - UI app scaffold: `apps/ui/README.md`
 - Indexer scaffold: `apps/indexer/README.md`

@@ -211,23 +211,58 @@ export async function fetchResolutionStatus(marketId: number): Promise<Resolutio
   }
 
   const payload = await response.json() as Record<string, unknown>;
+  return parseResolutionStatusPayload(payload, marketId);
+}
+
+function parseResolutionStatusPayload(payload: Record<string, unknown>, marketId: number): ResolutionStatusView {
+  const assertionId = payload.assertion_id ?? payload.active_assertion_id;
+  const submittedBlockHeight = payload.submitted_block_height;
+  const disputedBlockHeight = payload.disputed_block_height;
+  const settledBlockHeight = payload.settled_block_height;
+  const submittedTimestampNs = payload.submitted_timestamp_ns ?? payload.assertion_submitted_at_ns;
+  const disputedTimestampNs = payload.disputed_timestamp_ns;
+  const settledTimestampNs = payload.settled_timestamp_ns;
+  const livenessDeadlineNs = payload.liveness_deadline_ns ?? payload.assertion_expires_at_ns;
+
   return {
     marketId: Number(payload.market_id ?? marketId),
     status: String(payload.status ?? 'unknown'),
-    outcome: normalizeOutcome(payload.outcome),
-    assertionId: payload.assertion_id ? String(payload.assertion_id) : null,
+    outcome: normalizeOutcome(payload.outcome ?? payload.asserted_outcome),
+    assertionId: assertionId ? String(assertionId) : null,
     resolver: payload.resolver ? String(payload.resolver) : null,
     disputer: payload.disputer ? String(payload.disputer) : null,
-    submittedBlockHeight: payload.submitted_block_height ? Number(payload.submitted_block_height) : null,
-    disputedBlockHeight: payload.disputed_block_height ? Number(payload.disputed_block_height) : null,
-    settledBlockHeight: payload.settled_block_height ? Number(payload.settled_block_height) : null,
-    submittedTimestampNs: payload.submitted_timestamp_ns ? String(payload.submitted_timestamp_ns) : null,
-    disputedTimestampNs: payload.disputed_timestamp_ns ? String(payload.disputed_timestamp_ns) : null,
-    settledTimestampNs: payload.settled_timestamp_ns ? String(payload.settled_timestamp_ns) : null,
-    livenessDeadlineNs: payload.liveness_deadline_ns ? String(payload.liveness_deadline_ns) : null,
+    submittedBlockHeight: submittedBlockHeight ? Number(submittedBlockHeight) : null,
+    disputedBlockHeight: disputedBlockHeight ? Number(disputedBlockHeight) : null,
+    settledBlockHeight: settledBlockHeight ? Number(settledBlockHeight) : null,
+    submittedTimestampNs: submittedTimestampNs ? String(submittedTimestampNs) : null,
+    disputedTimestampNs: disputedTimestampNs ? String(disputedTimestampNs) : null,
+    settledTimestampNs: settledTimestampNs ? String(settledTimestampNs) : null,
+    livenessDeadlineNs: livenessDeadlineNs ? String(livenessDeadlineNs) : null,
     isResolvableNow: typeof payload.is_resolvable_now === 'boolean' ? payload.is_resolvable_now : null,
     isDisputableNow: typeof payload.is_disputable_now === 'boolean' ? payload.is_disputable_now : null,
   };
+}
+
+export async function fetchResolutionStatusWithFallback(wallet: WalletLike, marketId: number): Promise<ResolutionStatusView> {
+  try {
+    return await fetchResolutionStatus(marketId);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.endsWith(': 404')) {
+      throw error;
+    }
+  }
+
+  const raw = await wallet.viewFunction({
+    contractId: CONTRACTS.market,
+    method: 'get_resolution_status',
+    args: { market_id: marketId },
+  });
+
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Failed to fetch resolution status from contract');
+  }
+
+  return parseResolutionStatusPayload(raw as Record<string, unknown>, marketId);
 }
 
 export function getIndexerWebSocketUrl(marketId: number): string {

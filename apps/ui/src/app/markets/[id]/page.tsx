@@ -17,12 +17,50 @@ import {
   fetchMarketActivity,
   fetchMarketById,
   fetchMinimumBondAmount,
-  fetchResolutionStatus,
+  fetchResolutionStatusWithFallback,
   getPrices,
   submitResolution,
 } from '@/lib/markets';
+import { ensureUsdcBalanceWithOnramp } from '@/lib/onramp';
 import { NETWORK_ID, NEST_UI_VOTE_URL } from '@/config';
 import type { MarketActivityItem, MarketView, Outcome, ResolutionStatusView } from '@/lib/types';
+
+interface LifecycleEventView {
+  key: string;
+  eventType: string;
+  blockHeight: number | null;
+  timestampMs: number;
+  source: 'indexer' | 'status';
+  note?: string;
+}
+
+function formatHash(value: string): string {
+  if (value.length <= 24) return value;
+  return `${value.slice(0, 12)}...${value.slice(-12)}`;
+}
+
+function normalizeEventType(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function hasLifecycleEvent(events: LifecycleEventView[], aliases: string[]): boolean {
+  const aliasSet = new Set(aliases.map((item) => normalizeEventType(item)));
+  return events.some((event) => aliasSet.has(normalizeEventType(event.eventType)));
+}
+
+function toMsFromNs(value: string | null): number | null {
+  if (!value) return null;
+  const asNumber = Number(value);
+  if (!Number.isFinite(asNumber) || asNumber <= 0) return null;
+  return asNumber / 1_000_000;
+}
+
+function toTitleCaseEvent(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 export default function MarketDetailPage() {
   const wallet = useNearWallet();
@@ -52,7 +90,7 @@ export default function MarketDetailPage() {
     if (nextMarket) {
       try {
         const [status, timeline, minimumBond] = await Promise.all([
-          fetchResolutionStatus(marketId),
+          fetchResolutionStatusWithFallback(wallet, marketId),
           fetchMarketActivity(marketId, 100),
           fetchMinimumBondAmount(wallet),
         ]);
@@ -117,7 +155,7 @@ export default function MarketDetailPage() {
       try {
         const [nextMarket, status, timeline, minimumBond] = await Promise.all([
           fetchMarketById(wallet, marketId),
-          fetchResolutionStatus(marketId),
+          fetchResolutionStatusWithFallback(wallet, marketId),
           fetchMarketActivity(marketId, 100),
           fetchMinimumBondAmount(wallet),
         ]);
@@ -193,6 +231,63 @@ export default function MarketDetailPage() {
     return `${NEST_UI_VOTE_URL}?${params.toString()}`;
   }, [resolutionStatus?.assertionId, dvmRequestIdHex, marketId]);
 
+  const lifecycleEvents = useMemo(() => {
+    const base: LifecycleEventView[] = activity.map((item) => ({
+      key: `${item.receiptId}-${item.eventType}`,
+      eventType: item.eventType,
+      blockHeight: item.blockHeight || null,
+      timestampMs: item.timestampMs || 0,
+      source: 'indexer',
+    }));
+
+    if (resolutionStatus) {
+      const submittedMs = toMsFromNs(resolutionStatus.submittedTimestampNs);
+      if (
+        submittedMs !== null
+        && !hasLifecycleEvent(base, ['resolution_submitted', 'assertion_made', 'assertion_submitted'])
+      ) {
+        base.push({
+          key: `status-submitted-${submittedMs}`,
+          eventType: 'resolution_submitted',
+          blockHeight: resolutionStatus.submittedBlockHeight,
+          timestampMs: submittedMs,
+          source: 'status',
+        });
+      }
+
+      const disputedMs = toMsFromNs(resolutionStatus.disputedTimestampNs);
+      if (
+        disputedMs !== null
+        && !hasLifecycleEvent(base, ['resolution_disputed', 'assertion_disputed', 'disputed'])
+      ) {
+        base.push({
+          key: `status-disputed-${disputedMs}`,
+          eventType: 'resolution_disputed',
+          blockHeight: resolutionStatus.disputedBlockHeight,
+          timestampMs: disputedMs,
+          source: 'status',
+          note: resolutionStatus.disputer ? `Disputer: ${resolutionStatus.disputer}` : undefined,
+        });
+      }
+
+      const settledMs = toMsFromNs(resolutionStatus.settledTimestampNs);
+      if (
+        settledMs !== null
+        && !hasLifecycleEvent(base, ['market_settled', 'resolution_settled', 'assertion_settled'])
+      ) {
+        base.push({
+          key: `status-settled-${settledMs}`,
+          eventType: 'resolution_settled',
+          blockHeight: resolutionStatus.settledBlockHeight,
+          timestampMs: settledMs,
+          source: 'status',
+        });
+      }
+    }
+
+    return base.sort((a, b) => b.timestampMs - a.timestampMs);
+  }, [activity, resolutionStatus]);
+
   async function handleSubmitResolution(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!market) return;
@@ -209,6 +304,8 @@ export default function MarketDetailPage() {
     setActionError('');
     setResolutionPending(true);
     try {
+      await ensureUsdcBalanceWithOnramp(wallet, resolutionBondAmount);
+
       await submitResolution(wallet, {
         marketId: market.id,
         outcome: resolutionOutcome,
@@ -241,6 +338,8 @@ export default function MarketDetailPage() {
     setActionError('');
     setDisputePending(true);
     try {
+      await ensureUsdcBalanceWithOnramp(wallet, disputeBondAmount);
+
       await disputeAssertion(wallet, {
         assertionIdHex: resolutionStatus.assertionId,
         bondAmount: disputeBondAmount,
@@ -328,11 +427,24 @@ export default function MarketDetailPage() {
         ) : (
           <article className="card market-detail">
             <h2>Resolution & Dispute</h2>
-            <p className="muted">Lifecycle status: {resolutionStatus?.status ?? market.status}</p>
-            {disputeCountdown ? <p className="muted">Dispute window: {disputeCountdown}</p> : null}
-            {resolutionStatus?.assertionId ? <p className="muted">Assertion ID: <code>{resolutionStatus.assertionId}</code></p> : null}
-            {dvmRequestIdHex ? <p className="muted">DVM Request ID: <code>{dvmRequestIdHex}</code></p> : null}
-            {!canSubmitResolution ? <p className="muted">Resolution unlocks at {formatResolutionTime(market.resolutionTimeNs)}.</p> : null}
+            <div className="resolution-meta">
+              <p className="muted"><strong>Lifecycle status:</strong> {resolutionStatus?.status ?? market.status}</p>
+              {disputeCountdown ? <p className="muted"><strong>Dispute window:</strong> {disputeCountdown}</p> : null}
+              {resolutionStatus?.disputer ? <p className="muted"><strong>Disputer:</strong> {resolutionStatus.disputer}</p> : null}
+              {resolutionStatus?.assertionId ? (
+                <p className="muted">
+                  <strong>Assertion ID:</strong>{' '}
+                  <code className="hash-inline" title={resolutionStatus.assertionId}>{formatHash(resolutionStatus.assertionId)}</code>
+                </p>
+              ) : null}
+              {dvmRequestIdHex ? (
+                <p className="muted">
+                  <strong>DVM Request ID:</strong>{' '}
+                  <code className="hash-inline" title={dvmRequestIdHex}>{formatHash(dvmRequestIdHex)}</code>
+                </p>
+              ) : null}
+              {!canSubmitResolution ? <p className="muted">Resolution unlocks at {formatResolutionTime(market.resolutionTimeNs)}.</p> : null}
+            </div>
             {lifecycleError ? <p className="error-text">Lifecycle data unavailable: {lifecycleError}</p> : null}
             {actionError ? <p className="error-text">{actionError}</p> : null}
 
@@ -385,11 +497,16 @@ export default function MarketDetailPage() {
             ) : null}
 
             <h3>Lifecycle Timeline</h3>
-            {activity.length === 0 ? <p className="muted">No lifecycle events yet.</p> : null}
-            <ul>
-              {activity.map((item) => (
-                <li key={`${item.receiptId}-${item.eventType}`}>
-                  <strong>{item.eventType}</strong> at block {item.blockHeight} ({new Date(item.timestampMs).toLocaleString()})
+            {lifecycleEvents.length === 0 ? <p className="muted">No lifecycle events yet.</p> : null}
+            <ul className="lifecycle-events">
+              {lifecycleEvents.map((item) => (
+                <li key={item.key}>
+                  <strong>{toTitleCaseEvent(item.eventType)}</strong>
+                  {item.blockHeight ? ` at block ${item.blockHeight}` : ''}
+                  {' '}
+                  ({new Date(item.timestampMs).toLocaleString()})
+                  {item.note ? ` - ${item.note}` : ''}
+                  {item.source === 'status' ? ' [from status]' : ''}
                 </li>
               ))}
             </ul>

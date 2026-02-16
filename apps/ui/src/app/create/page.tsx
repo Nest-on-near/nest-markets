@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useNearWallet } from 'near-connect-hooks';
 
 import { createMarket } from '@/lib/markets';
+import { ensureUsdcBalanceWithOnramp } from '@/lib/onramp';
 
 export default function CreateMarketPage() {
   const wallet = useNearWallet();
@@ -24,9 +25,14 @@ export default function CreateMarketPage() {
     }
 
     const resolutionMs = new Date(resolutionDate).getTime();
+    const liquidityAmount = Number(liquidity);
 
     if (!resolutionMs || resolutionMs <= Date.now()) {
       setMessage('Select a valid future resolution date.');
+      return;
+    }
+    if (!Number.isFinite(liquidityAmount) || liquidityAmount <= 0) {
+      setMessage('Enter a valid initial liquidity amount.');
       return;
     }
 
@@ -34,18 +40,20 @@ export default function CreateMarketPage() {
     setMessage('');
 
     try {
+      await ensureUsdcBalanceWithOnramp(wallet, liquidityAmount);
+
       await createMarket(wallet, {
         question,
         description,
-        initialLiquidity: Number(liquidity),
+        initialLiquidity: liquidityAmount,
         resolutionTimeNs: (resolutionMs * 1_000_000).toString(),
       });
 
       setMessage('Market creation transaction submitted.');
       setQuestion('');
       setDescription('');
-    } catch {
-      setMessage('Market creation failed. Check token contract and allowances.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Market creation failed. Check token contract and allowances.');
     } finally {
       setLoading(false);
     }

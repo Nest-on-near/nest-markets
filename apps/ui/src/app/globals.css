@@ -109,6 +109,30 @@ button {
   gap: 0.3rem;
 }
 
+.top-nav__actions {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+}
+
+.onramp-toggle {
+  align-items: center;
+  color: #474f62;
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.onramp-toggle input {
+  accent-color: #1f2128;
+}
+
+.onramp-toggle input:disabled + span {
+  opacity: 0.55;
+}
+
 .top-nav__links a {
   border-radius: 999px;
   color: #474f62;
@@ -610,6 +634,22 @@ button {
   gap: 0.2rem;
 }
 
+.onramp-hint {
+  background: #f2f8ff;
+  border: 1px solid #cfe0fd;
+  border-radius: 0.65rem;
+  color: #3e4d6b;
+  font-size: 0.88rem;
+  padding: 0.5rem 0.6rem;
+}
+
+.onramp-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .percent-row {
   align-items: center;
   display: flex;
@@ -649,6 +689,44 @@ button {
 
 .error-text {
   color: #d64387;
+}
+
+.resolution-meta {
+  border: 1px solid #e1ddcf;
+  border-radius: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.hash-inline {
+  background: #f4f8ff;
+  border: 1px solid #d6deec;
+  border-radius: 0.45rem;
+  color: #3f4a61;
+  display: inline-block;
+  font-size: 0.8rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 0.08rem 0.35rem;
+  vertical-align: baseline;
+}
+
+.lifecycle-events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  list-style-position: inside;
+  padding-left: 0;
+}
+
+.lifecycle-events li {
+  background: #fbfaf4;
+  border: 1px solid #ece6d6;
+  border-radius: 0.65rem;
+  overflow-wrap: anywhere;
+  padding: 0.55rem 0.65rem;
 }
 
 .playground {
@@ -843,6 +921,11 @@ button {
 
   .top-nav__links {
     order: 3;
+    width: 100%;
+  }
+
+  .top-nav__actions {
+    justify-content: space-between;
     width: 100%;
   }
 

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { DEFAULT_SLIPPAGE } from '@/config';
+import { DEFAULT_SLIPPAGE, NETWORK_ID } from '@/config';
 import {
   buyOutcome,
   estimateBuyTokens,
@@ -11,6 +11,7 @@ import {
   redeemWinningTokens,
   sellOutcome,
 } from '@/lib/markets';
+import { ensureUsdcBalanceWithOnramp, openUsdcOnramp, shouldRunMainnetOnrampGate } from '@/lib/onramp';
 import type { MarketStatus, Outcome } from '@/lib/types';
 
 interface WalletLike {
@@ -49,13 +50,17 @@ export function TradePanel({
   const [amount, setAmount] = useState('10');
   const [slippage, setSlippage] = useState(String(DEFAULT_SLIPPAGE));
   const [pending, setPending] = useState(false);
+  const [topUpPending, setTopUpPending] = useState(false);
   const [estimating, setEstimating] = useState(false);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [collateralBalance, setCollateralBalance] = useState(0);
   const [yesBalance, setYesBalance] = useState(0);
   const [noBalance, setNoBalance] = useState(0);
   const [error, setError] = useState('');
+  const isOpen = marketStatus === 'Open';
+  const isClosed = marketStatus === 'Closed';
   const isSettled = marketStatus === 'Settled';
+  const showRedeemPanel = isSettled || isClosed;
   const redeemOutcome = settledOutcome;
 
   const selectedPrice = outcome === 'Yes' ? yesPrice : noPrice;
@@ -77,6 +82,8 @@ export function TradePanel({
       : redeemOutcome === 'No'
         ? noBalance
         : 0
+    : isClosed
+      ? 0
     : mode === 'Buy'
       ? collateralBalance
       : outcome === 'Yes'
@@ -85,22 +92,29 @@ export function TradePanel({
 
   const amountNumber = Number(amount);
   const hasValidAmount = Number.isFinite(amountNumber) && amountNumber > 0;
+  const onrampAvailable = shouldRunMainnetOnrampGate();
+  const shouldPromptMainnetBuyOnramp = isOpen
+    && mode === 'Buy'
+    && NETWORK_ID === 'mainnet'
+    && onrampAvailable
+    && hasValidAmount
+    && amountNumber > collateralBalance;
 
   const averageFillPrice = useMemo(() => {
-    if (!hasValidAmount || mode !== 'Buy' || isSettled || estimate <= 0) {
+    if (!hasValidAmount || mode !== 'Buy' || !isOpen || estimate <= 0) {
       return 0;
     }
 
     return amountNumber / estimate;
-  }, [amountNumber, estimate, hasValidAmount, isSettled, mode]);
+  }, [amountNumber, estimate, hasValidAmount, isOpen, mode]);
 
   const maxPayoutIfCorrect = useMemo(() => {
-    if (mode !== 'Buy' || isSettled || estimate <= 0) {
+    if (mode !== 'Buy' || !isOpen || estimate <= 0) {
       return 0;
     }
 
     return estimate;
-  }, [estimate, isSettled, mode]);
+  }, [estimate, isOpen, mode]);
 
   async function loadBalances() {
     if (!wallet.signedAccountId) {
@@ -126,9 +140,9 @@ export function TradePanel({
   }
 
   useEffect(() => {
-    if (isSettled) {
+    if (showRedeemPanel) {
       const redeemValue = Number(amount);
-      setEstimate(Number.isFinite(redeemValue) && redeemValue > 0 ? redeemValue : 0);
+      setEstimate(isSettled && Number.isFinite(redeemValue) && redeemValue > 0 ? redeemValue : 0);
       return;
     }
 
@@ -166,7 +180,7 @@ export function TradePanel({
     return () => {
       cancelled = true;
     };
-  }, [amount, isSettled, localEstimate, marketId, mode, outcome, wallet]);
+  }, [amount, isSettled, localEstimate, marketId, mode, outcome, showRedeemPanel, wallet]);
 
   useEffect(() => {
     loadBalances();
@@ -189,6 +203,11 @@ export function TradePanel({
       return;
     }
 
+    if (!isOpen && !isSettled) {
+      setError('Market is closed for trading and not settled yet. Redeem becomes available after settlement.');
+      return;
+    }
+
     const amountNumber = Number(amount);
     const slippageValue = Number(slippage) / 100;
 
@@ -196,7 +215,7 @@ export function TradePanel({
       setError('Enter a valid amount.');
       return;
     }
-    if (amountNumber > availableAmount) {
+    if ((isSettled || mode === 'Sell') && amountNumber > availableAmount) {
       setError('Amount exceeds available balance.');
       return;
     }
@@ -211,6 +230,15 @@ export function TradePanel({
           amount: amountNumber,
         });
       } else if (mode === 'Buy') {
+        await ensureUsdcBalanceWithOnramp(wallet, amountNumber);
+        const refreshedCollateral = await fetchCollateralBalance(wallet);
+        setCollateralBalance(refreshedCollateral);
+
+        if (amountNumber > refreshedCollateral) {
+          setError('Amount exceeds available balance.');
+          return;
+        }
+
         await buyOutcome(wallet, {
           marketId,
           outcome,
@@ -228,20 +256,40 @@ export function TradePanel({
 
       await onTradeComplete();
       await loadBalances();
-    } catch {
-      setError('Transaction failed. Check wallet and contract setup.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Transaction failed. Check wallet and contract setup.');
     } finally {
       setPending(false);
     }
   }
 
+  async function handleManualTopUp() {
+    if (!wallet.signedAccountId) {
+      setError('Connect wallet before topping up USDC.');
+      return;
+    }
+
+    setTopUpPending(true);
+    setError('');
+    try {
+      await openUsdcOnramp();
+      await loadBalances();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'USDC top up failed.');
+    } finally {
+      setTopUpPending(false);
+    }
+  }
+
   return (
     <section className="card trade-panel">
-      <h2>{isSettled ? 'Redeem' : 'Trade'}</h2>
+      <h2>{showRedeemPanel ? 'Redeem' : 'Trade'}</h2>
 
-      {isSettled ? (
+      {showRedeemPanel ? (
         <p className="muted">
-          Market is settled. Redeem {redeemOutcome ?? 'winning'} tokens for nUSD.
+          {isSettled
+            ? `Market is settled. Redeem ${redeemOutcome ?? 'winning'} tokens for nUSD.`
+            : 'Market is closed. Trading is disabled until a new resolution is submitted or the market is settled.'}
         </p>
       ) : (
         <>
@@ -267,7 +315,7 @@ export function TradePanel({
         </>
       )}
 
-      {isSettled ? (
+      {showRedeemPanel ? (
         <div className="segmented">
           <button className={redeemOutcome === 'Yes' ? 'active yes-button' : 'yes-button'} type="button" disabled>
             YES
@@ -304,8 +352,15 @@ export function TradePanel({
         </div>
 
         <label>
-          {isSettled ? 'Redeem Tokens' : mode === 'Buy' ? 'Spend (USDC)' : 'Tokens'}
-          <input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0" step="0.01" />
+          {showRedeemPanel ? 'Redeem Tokens' : mode === 'Buy' ? 'Spend (USDC)' : 'Tokens'}
+          <input
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            disabled={isClosed}
+          />
         </label>
 
         <div className="percent-row">
@@ -321,11 +376,11 @@ export function TradePanel({
             </button>
           ))}
           <span className="muted">
-            Available {isSettled ? redeemOutcome ?? 'winning' : mode === 'Buy' ? 'nUSD' : outcome}: {availableAmount.toFixed(2)}
+            Available {showRedeemPanel ? redeemOutcome ?? 'winning' : mode === 'Buy' ? 'nUSD' : outcome}: {availableAmount.toFixed(2)}
           </span>
         </div>
 
-        {!isSettled ? (
+        {isOpen ? (
           <label>
             Slippage (%)
             <input value={slippage} onChange={(event) => setSlippage(event.target.value)} type="number" min="0" step="0.1" />
@@ -333,11 +388,11 @@ export function TradePanel({
         ) : null}
 
         <p className="muted">
-          Estimated {isSettled ? 'nUSD out' : mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}
-          {!isSettled && mode === 'Buy' && estimating ? ' (updating...)' : ''}
+          Estimated {showRedeemPanel ? 'nUSD out' : mode === 'Buy' ? 'tokens out' : 'USDC out'}: {estimate.toFixed(2)}
+          {isOpen && mode === 'Buy' && estimating ? ' (updating...)' : ''}
         </p>
 
-        {!isSettled && mode === 'Buy' ? (
+        {isOpen && mode === 'Buy' ? (
           <div className="trade-estimate-grid">
             <span className="muted">Current {outcome} price: {selectedPrice.toFixed(2)}%</span>
             <span className="muted">Opposite price: {oppositePrice.toFixed(2)}%</span>
@@ -346,10 +401,36 @@ export function TradePanel({
           </div>
         ) : null}
 
+        {shouldPromptMainnetBuyOnramp ? (
+          <p className="onramp-hint">
+            Insufficient USDC for this buy. Submitting will open Ping so you can top up, then continue.
+          </p>
+        ) : null}
+
+        {onrampAvailable && isOpen ? (
+          <div className="onramp-actions">
+            <button
+              className="cta-button"
+              type="button"
+              disabled={pending || topUpPending || !wallet.signedAccountId}
+              onClick={handleManualTopUp}
+            >
+              {topUpPending ? 'Opening Ping...' : 'Top up USDC with Ping'}
+            </button>
+            {!wallet.signedAccountId ? <span className="muted">Connect wallet to top up.</span> : null}
+          </div>
+        ) : null}
+
         {error ? <p className="error-text">{error}</p> : null}
 
-        <button type="submit" disabled={pending} className="cta-button">
-          {pending ? 'Submitting...' : isSettled ? `Redeem ${redeemOutcome ?? ''}`.trim() : `${mode} ${outcome}`}
+        <button type="submit" disabled={pending || isClosed} className="cta-button">
+          {pending
+            ? 'Submitting...'
+            : isSettled
+              ? `Redeem ${redeemOutcome ?? ''}`.trim()
+              : isClosed
+                ? 'Redeem Unavailable'
+                : `${mode} ${outcome}`}
         </button>
       </form>
     </section>
