@@ -4,7 +4,7 @@ use axum::{
         Path, Query, State,
     },
     http::StatusCode,
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     routing::get,
     Json, Router,
 };
@@ -38,6 +38,8 @@ pub fn create_router(state: AppState) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        .route("/docs", get(api_docs))
+        .route("/openapi.json", get(openapi_spec))
         .route("/health", get(health_check))
         .route("/markets/:id/price-history", get(get_price_history))
         .route("/markets/:id/trades", get(get_trades))
@@ -47,6 +49,121 @@ pub fn create_router(state: AppState) -> Router {
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn api_docs() -> Html<&'static str> {
+    Html(
+        r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nest Markets Indexer API Docs</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; line-height: 1.5; color: #111827; }
+      code { background: #f3f4f6; padding: 0.15rem 0.35rem; border-radius: 0.25rem; }
+      pre { background: #f9fafb; border: 1px solid #e5e7eb; padding: 0.8rem; border-radius: 0.5rem; overflow-x: auto; }
+      h1, h2 { margin-bottom: 0.5rem; }
+      ul { margin-top: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Nest Markets Indexer API</h1>
+    <p>OpenAPI JSON: <a href="/openapi.json"><code>/openapi.json</code></a></p>
+
+    <h2>Endpoints</h2>
+    <ul>
+      <li><code>GET /health</code></li>
+      <li><code>GET /markets/{id}/price-history?limit=200</code></li>
+      <li><code>GET /markets/{id}/trades?limit=50</code></li>
+      <li><code>GET /markets/{id}/activity?limit=100</code></li>
+      <li><code>GET /markets/{id}/resolution-status</code></li>
+      <li><code>GET /ws?market_id={id}</code></li>
+    </ul>
+
+    <h2>Examples</h2>
+    <pre>curl http://127.0.0.1:3002/health
+curl "http://127.0.0.1:3002/markets/0/price-history?limit=200"
+curl "http://127.0.0.1:3002/markets/0/trades?limit=50"
+curl "http://127.0.0.1:3002/markets/0/activity?limit=100"
+curl "http://127.0.0.1:3002/markets/0/resolution-status"</pre>
+  </body>
+</html>
+"#,
+    )
+}
+
+async fn openapi_spec() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Nest Markets Indexer API",
+            "version": env!("CARGO_PKG_VERSION"),
+            "description": "REST API for market history, activity, and real-time trade streams."
+        },
+        "servers": [{ "url": "http://127.0.0.1:3002" }],
+        "paths": {
+            "/health": {
+                "get": {
+                    "summary": "Health check",
+                    "responses": { "200": { "description": "Service health and indexing status" } }
+                }
+            },
+            "/markets/{id}/price-history": {
+                "get": {
+                    "summary": "Get market price history",
+                    "parameters": [
+                        { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                        { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 2000 } }
+                    ],
+                    "responses": { "200": { "description": "Price history points" } }
+                }
+            },
+            "/markets/{id}/trades": {
+                "get": {
+                    "summary": "Get recent market trades",
+                    "parameters": [
+                        { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                        { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+                    ],
+                    "responses": { "200": { "description": "Trade list" } }
+                }
+            },
+            "/markets/{id}/activity": {
+                "get": {
+                    "summary": "Get market activity feed",
+                    "parameters": [
+                        { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                        { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } }
+                    ],
+                    "responses": { "200": { "description": "Activity feed" } }
+                }
+            },
+            "/markets/{id}/resolution-status": {
+                "get": {
+                    "summary": "Get market resolution/dispute status",
+                    "parameters": [
+                        { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+                    ],
+                    "responses": {
+                        "200": { "description": "Resolution status" },
+                        "404": { "description": "Market not found" }
+                    }
+                }
+            },
+            "/ws": {
+                "get": {
+                    "summary": "WebSocket stream of live trades",
+                    "parameters": [
+                        { "name": "market_id", "in": "query", "schema": { "type": "integer" } }
+                    ],
+                    "responses": {
+                        "101": { "description": "WebSocket upgrade accepted" }
+                    }
+                }
+            }
+        }
+    }))
 }
 
 async fn health_check(State(state): State<AppState>) -> impl IntoResponse {

@@ -316,7 +316,7 @@ Returns `ConfigView`:
   "owner": "owner.testnet",
   "usdc_token": "nusd-1.testnet",
   "outcome_token": "outcome-token-2.testnet",
-  "oracle": "nest-oracle-3.testnet",
+  "oracle": "nest-oracle-7.testnet",
   "market_count": "5",
   "default_fee_bps": 200
 }

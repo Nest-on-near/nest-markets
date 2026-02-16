@@ -12,7 +12,7 @@ This repository is organized as a monorepo for the full prediction market stack:
 | -------------- | -------------------------- |
 | Outcome Token  | `<your-outcome-token-account>` |
 | Market         | `<your-market-account>` |
-| Oracle (from nest-contracts) | `nest-oracle-6.testnet` |
+| Oracle (from nest-contracts) | `nest-oracle-7.testnet` |
 | nUSD (mock)    | `<your-nusd-account>` |
 
 Use `POST_DEPLOYMENT.md` with your deployed account IDs for exact wiring steps.

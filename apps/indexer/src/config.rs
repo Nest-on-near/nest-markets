@@ -10,15 +10,15 @@ pub struct AppConfig {
 impl AppConfig {
     pub fn from_env() -> Self {
         let database_url =
-            std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:nest-market-indexer.db?mode=rwc".to_string());
+            std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:nest-market-indexer-mainnet.db?mode=rwc".to_string());
         let bind_address = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3002".to_string());
         let market_contract_id =
             std::env::var("MARKET_CONTRACT_ID")
-                .unwrap_or_else(|_| "nest-markets-2.testnet".to_string());
+                .unwrap_or_else(|_| "markets.nest-beta.near".to_string());
         let event_standard = std::env::var("EVENT_STANDARD").unwrap_or_else(|_| "nest-markets".to_string());
         let is_testnet = std::env::var("NETWORK")
             .map(|n| n == "testnet")
-            .unwrap_or(true);
+            .unwrap_or(false);
 
         Self {
             database_url,

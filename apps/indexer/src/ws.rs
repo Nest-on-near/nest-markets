@@ -37,55 +37,6 @@ fn build_filter(config: &EventListenerConfig) -> Operator {
             path: "event_standard".to_string(),
             operator: Operator::Equals(serde_json::Value::String(config.event_standard.clone())),
         },
-        Filter {
-            path: ".".to_string(),
-            operator: Operator::Or(vec![
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String(
-                        "market_created".to_string(),
-                    )),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("trade".to_string())),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String(
-                        "liquidity_added".to_string(),
-                    )),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String(
-                        "liquidity_removed".to_string(),
-                    )),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String(
-                        "resolution_submitted".to_string(),
-                    )),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String(
-                        "market_disputed".to_string(),
-                    )),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String(
-                        "market_settled".to_string(),
-                    )),
-                },
-                Filter {
-                    path: "event_event".to_string(),
-                    operator: Operator::Equals(serde_json::Value::String("redeemed".to_string())),
-                },
-            ]),
-        },
     ])
 }
 
@@ -384,7 +335,31 @@ async fn handle_event(
             .await?;
         }
         _ => {
-            warn!("Ignoring unknown event type: {}", event.event_event);
+            if let Some(market_id) = event_data_inner
+                .get("market_id")
+                .and_then(|v| v.as_u64())
+            {
+                let _ = process_generic_event(
+                    pool,
+                    &event,
+                    market_id,
+                    "open",
+                    None,
+                    None,
+                    None,
+                    &event_json,
+                )
+                .await?;
+                warn!(
+                    "Captured unknown market event type '{}' for market_id={}",
+                    event.event_event, market_id
+                );
+            } else {
+                warn!(
+                    "Ignoring unknown event type '{}' (no market_id field)",
+                    event.event_event
+                );
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
+use sqlx::{any::AnyPoolOptions, Any, Pool, QueryBuilder};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::types::{
@@ -7,7 +7,7 @@ use crate::types::{
     ResolutionStatusResponse, TradeEvent, TradeResponseItem,
 };
 
-pub type DbPool = Pool<Sqlite>;
+pub type DbPool = Pool<Any>;
 
 #[derive(Debug, Clone)]
 pub struct EventInsert {
@@ -53,12 +53,28 @@ fn now_timestamp() -> i64 {
 }
 
 pub async fn init_db(database_url: &str) -> Result<DbPool> {
-    let pool = SqlitePoolOptions::new()
+    let pool = AnyPoolOptions::new()
         .max_connections(5)
         .connect(database_url)
         .await?;
+    let is_postgres = database_url.starts_with("postgres://")
+        || database_url.starts_with("postgresql://");
 
-    sqlx::query(
+    let market_events_ddl = if is_postgres {
+        r#"
+        CREATE TABLE IF NOT EXISTS market_events (
+            id BIGSERIAL PRIMARY KEY,
+            market_id BIGINT NOT NULL,
+            event_type TEXT NOT NULL,
+            block_height BIGINT NOT NULL,
+            block_timestamp_ns TEXT NOT NULL,
+            transaction_id TEXT NOT NULL,
+            receipt_id TEXT NOT NULL,
+            event_json TEXT NOT NULL,
+            created_at BIGINT NOT NULL
+        )
+        "#
+    } else {
         r#"
         CREATE TABLE IF NOT EXISTS market_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,8 +87,9 @@ pub async fn init_db(database_url: &str) -> Result<DbPool> {
             event_json TEXT NOT NULL,
             created_at INTEGER NOT NULL
         )
-        "#,
-    )
+        "#
+    };
+    sqlx::query(market_events_ddl)
     .execute(&pool)
     .await?;
 
@@ -82,7 +99,25 @@ pub async fn init_db(database_url: &str) -> Result<DbPool> {
     .execute(&pool)
     .await?;
 
-    sqlx::query(
+    let market_price_points_ddl = if is_postgres {
+        r#"
+        CREATE TABLE IF NOT EXISTS market_price_points (
+            id BIGSERIAL PRIMARY KEY,
+            market_id BIGINT NOT NULL,
+            yes_price TEXT NOT NULL,
+            no_price TEXT NOT NULL,
+            collateral_amount TEXT NOT NULL,
+            token_amount TEXT NOT NULL,
+            is_buy INTEGER NOT NULL,
+            outcome TEXT NOT NULL,
+            trader TEXT NOT NULL,
+            block_height BIGINT NOT NULL,
+            block_timestamp_ns TEXT NOT NULL,
+            transaction_id TEXT NOT NULL,
+            receipt_id TEXT NOT NULL
+        )
+        "#
+    } else {
         r#"
         CREATE TABLE IF NOT EXISTS market_price_points (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,8 +134,9 @@ pub async fn init_db(database_url: &str) -> Result<DbPool> {
             transaction_id TEXT NOT NULL,
             receipt_id TEXT NOT NULL
         )
-        "#,
-    )
+        "#
+    };
+    sqlx::query(market_price_points_ddl)
     .execute(&pool)
     .await?;
 
@@ -159,10 +195,11 @@ pub async fn init_db(database_url: &str) -> Result<DbPool> {
 pub async fn insert_market_event(pool: &DbPool, event: &EventInsert) -> Result<bool> {
     let result = sqlx::query(
         r#"
-        INSERT OR IGNORE INTO market_events (
+        INSERT INTO market_events (
             market_id, event_type, block_height, block_timestamp_ns,
             transaction_id, receipt_id, event_json, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(receipt_id, event_type, market_id) DO NOTHING
         "#,
     )
     .bind(event.market_id as i64)
@@ -189,11 +226,12 @@ pub async fn insert_price_point(
 ) -> Result<()> {
     sqlx::query(
         r#"
-        INSERT OR IGNORE INTO market_price_points (
+        INSERT INTO market_price_points (
             market_id, yes_price, no_price, collateral_amount, token_amount,
             is_buy, outcome, trader, block_height, block_timestamp_ns,
             transaction_id, receipt_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(receipt_id, market_id) DO NOTHING
         "#,
     )
     .bind(trade.market_id as i64)
@@ -215,12 +253,28 @@ pub async fn insert_price_point(
 }
 
 pub async fn upsert_market_projection(pool: &DbPool, update: &ProjectionUpdate) -> Result<()> {
-    sqlx::query(
+    let mut qb = QueryBuilder::<Any>::new(
         r#"
         INSERT INTO markets_projection (
             market_id, status, outcome, latest_yes_price, latest_no_price,
             updated_block_height, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES ("#,
+    );
+    qb.push_bind(update.market_id as i64)
+        .push(", ")
+        .push_bind(&update.status)
+        .push(", ")
+        .push_bind(&update.outcome)
+        .push(", ")
+        .push_bind(&update.latest_yes_price)
+        .push(", ")
+        .push_bind(&update.latest_no_price)
+        .push(", ")
+        .push_bind(update.updated_block_height as i64)
+        .push(", ")
+        .push_bind(now_timestamp())
+        .push(
+            r#")
         ON CONFLICT(market_id) DO UPDATE SET
             status = excluded.status,
             outcome = COALESCE(excluded.outcome, markets_projection.outcome),
@@ -229,16 +283,8 @@ pub async fn upsert_market_projection(pool: &DbPool, update: &ProjectionUpdate) 
             updated_block_height = excluded.updated_block_height,
             updated_at = excluded.updated_at
         "#,
-    )
-    .bind(update.market_id as i64)
-    .bind(&update.status)
-    .bind(&update.outcome)
-    .bind(&update.latest_yes_price)
-    .bind(&update.latest_no_price)
-    .bind(update.updated_block_height as i64)
-    .bind(now_timestamp())
-    .execute(pool)
-    .await?;
+        );
+    qb.build().execute(pool).await?;
 
     Ok(())
 }
@@ -247,13 +293,39 @@ pub async fn upsert_lifecycle_projection(
     pool: &DbPool,
     update: &LifecycleProjectionUpdate,
 ) -> Result<()> {
-    sqlx::query(
+    let mut qb = QueryBuilder::<Any>::new(
         r#"
         INSERT INTO market_lifecycle_projection (
             market_id, assertion_id, resolver, disputer, submitted_block_height,
             disputed_block_height, settled_block_height, submitted_timestamp_ns,
             disputed_timestamp_ns, settled_timestamp_ns, liveness_deadline_ns, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES ("#,
+    );
+    qb.push_bind(update.market_id as i64)
+        .push(", ")
+        .push_bind(&update.assertion_id)
+        .push(", ")
+        .push_bind(&update.resolver)
+        .push(", ")
+        .push_bind(&update.disputer)
+        .push(", ")
+        .push_bind(update.submitted_block_height.map(|v| v as i64))
+        .push(", ")
+        .push_bind(update.disputed_block_height.map(|v| v as i64))
+        .push(", ")
+        .push_bind(update.settled_block_height.map(|v| v as i64))
+        .push(", ")
+        .push_bind(&update.submitted_timestamp_ns)
+        .push(", ")
+        .push_bind(&update.disputed_timestamp_ns)
+        .push(", ")
+        .push_bind(&update.settled_timestamp_ns)
+        .push(", ")
+        .push_bind(&update.liveness_deadline_ns)
+        .push(", ")
+        .push_bind(now_timestamp())
+        .push(
+            r#")
         ON CONFLICT(market_id) DO UPDATE SET
             assertion_id = COALESCE(excluded.assertion_id, market_lifecycle_projection.assertion_id),
             resolver = COALESCE(excluded.resolver, market_lifecycle_projection.resolver),
@@ -267,21 +339,8 @@ pub async fn upsert_lifecycle_projection(
             liveness_deadline_ns = COALESCE(excluded.liveness_deadline_ns, market_lifecycle_projection.liveness_deadline_ns),
             updated_at = excluded.updated_at
         "#,
-    )
-    .bind(update.market_id as i64)
-    .bind(&update.assertion_id)
-    .bind(&update.resolver)
-    .bind(&update.disputer)
-    .bind(update.submitted_block_height.map(|v| v as i64))
-    .bind(update.disputed_block_height.map(|v| v as i64))
-    .bind(update.settled_block_height.map(|v| v as i64))
-    .bind(&update.submitted_timestamp_ns)
-    .bind(&update.disputed_timestamp_ns)
-    .bind(&update.settled_timestamp_ns)
-    .bind(&update.liveness_deadline_ns)
-    .bind(now_timestamp())
-    .execute(pool)
-    .await?;
+        );
+    qb.build().execute(pool).await?;
 
     Ok(())
 }
@@ -313,24 +372,29 @@ pub async fn get_price_history(
     market_id: u64,
     limit: u32,
 ) -> Result<Vec<PriceHistoryPoint>> {
-    let rows = sqlx::query_as::<_, PricePointRow>(
+    let mut qb = QueryBuilder::<Any>::new(
         r#"
         SELECT *
         FROM (
             SELECT
                 id as _row_id, block_height, block_timestamp_ns, yes_price, no_price
             FROM market_price_points
-            WHERE market_id = ?
+            WHERE market_id = 
+        "#,
+    );
+    qb.push_bind(market_id as i64).push(
+        r#"
             ORDER BY block_height DESC, id DESC
-            LIMIT ?
+            LIMIT 
+        "#,
+    );
+    qb.push_bind(limit as i64).push(
+        r#"
         ) recent
         ORDER BY block_height ASC, _row_id ASC
         "#,
-    )
-    .bind(market_id as i64)
-    .bind(limit as i64)
-    .fetch_all(pool)
-    .await?;
+    );
+    let rows = qb.build_query_as::<PricePointRow>().fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -350,21 +414,23 @@ pub async fn get_trades(
     market_id: u64,
     limit: u32,
 ) -> Result<Vec<TradeResponseItem>> {
-    let rows = sqlx::query_as::<_, TradeRow>(
+    let mut qb = QueryBuilder::<Any>::new(
         r#"
         SELECT
             id as _row_id, block_height, block_timestamp_ns, transaction_id, trader,
             outcome, is_buy, collateral_amount, token_amount, yes_price, no_price
         FROM market_price_points
-        WHERE market_id = ?
-        ORDER BY block_height DESC, id DESC
-        LIMIT ?
+        WHERE market_id = 
         "#,
-    )
-    .bind(market_id as i64)
-    .bind(limit as i64)
-    .fetch_all(pool)
-    .await?;
+    );
+    qb.push_bind(market_id as i64).push(
+        r#"
+        ORDER BY block_height DESC, id DESC
+        LIMIT 
+        "#,
+    );
+    qb.push_bind(limit as i64);
+    let rows = qb.build_query_as::<TradeRow>().fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -388,20 +454,22 @@ pub async fn get_market_activity(
     market_id: u64,
     limit: u32,
 ) -> Result<Vec<MarketActivityItem>> {
-    let rows = sqlx::query_as::<_, MarketActivityRow>(
+    let mut qb = QueryBuilder::<Any>::new(
         r#"
         SELECT event_type, block_height, block_timestamp_ns, transaction_id, receipt_id, event_json
         FROM market_events
-        WHERE market_id = ?
+        WHERE market_id = 
+        "#,
+    );
+    qb.push_bind(market_id as i64).push(
+        r#"
           AND event_type IN ('resolution_submitted', 'market_disputed', 'market_settled')
         ORDER BY block_height DESC, id DESC
-        LIMIT ?
+        LIMIT 
         "#,
-    )
-    .bind(market_id as i64)
-    .bind(limit as i64)
-    .fetch_all(pool)
-    .await?;
+    );
+    qb.push_bind(limit as i64);
+    let rows = qb.build_query_as::<MarketActivityRow>().fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -422,7 +490,7 @@ pub async fn get_resolution_status(
     pool: &DbPool,
     market_id: u64,
 ) -> Result<Option<ResolutionStatusResponse>> {
-    let row = sqlx::query_as::<_, ResolutionStatusRow>(
+    let mut qb = QueryBuilder::<Any>::new(
         r#"
         SELECT
             p.market_id,
@@ -440,12 +508,14 @@ pub async fn get_resolution_status(
             l.liveness_deadline_ns
         FROM markets_projection p
         LEFT JOIN market_lifecycle_projection l ON l.market_id = p.market_id
-        WHERE p.market_id = ?
+        WHERE p.market_id = 
         "#,
-    )
-    .bind(market_id as i64)
-    .fetch_optional(pool)
-    .await?;
+    );
+    qb.push_bind(market_id as i64);
+    let row = qb
+        .build_query_as::<ResolutionStatusRow>()
+        .fetch_optional(pool)
+        .await?;
 
     Ok(row.map(|row| ResolutionStatusResponse {
         market_id: row.market_id as u64,

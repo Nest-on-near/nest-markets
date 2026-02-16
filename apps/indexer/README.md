@@ -4,6 +4,8 @@ Rust indexer service for `nest-markets` events. It ingests NEP-297 events from I
 
 ## Implemented (V1)
 
+- `GET /docs`
+- `GET /openapi.json`
 - `GET /health`
 - `GET /markets/:id/price-history?limit=200`
 - `GET /markets/:id/trades?limit=50`
@@ -23,10 +25,10 @@ Indexed event types:
 ## Environment Variables
 
 ```bash
-DATABASE_URL=sqlite:nest-market-indexer.db?mode=rwc
+DATABASE_URL=sqlite:nest-market-indexer-mainnet.db?mode=rwc
 BIND_ADDRESS=127.0.0.1:3002
-NETWORK=testnet
-MARKET_CONTRACT_ID=nest-markets-2.testnet
+NETWORK=mainnet
+MARKET_CONTRACT_ID=markets.nest-beta.near
 EVENT_STANDARD=nest-markets
 RUST_LOG=info
 ```
@@ -41,6 +43,8 @@ cargo run
 
 ```bash
 curl http://127.0.0.1:3002/health
+curl http://127.0.0.1:3002/docs
+curl http://127.0.0.1:3002/openapi.json
 curl "http://127.0.0.1:3002/markets/0/price-history?limit=200"
 curl "http://127.0.0.1:3002/markets/0/trades?limit=50"
 websocat "ws://127.0.0.1:3002/ws?market_id=0"
