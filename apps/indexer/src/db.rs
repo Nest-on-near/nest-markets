@@ -372,29 +372,23 @@ pub async fn get_price_history(
     market_id: u64,
     limit: u32,
 ) -> Result<Vec<PriceHistoryPoint>> {
-    let mut qb = QueryBuilder::<Any>::new(
+    let sql = format!(
         r#"
         SELECT *
         FROM (
             SELECT
                 id as _row_id, block_height, block_timestamp_ns, yes_price, no_price
             FROM market_price_points
-            WHERE market_id = 
-        "#,
-    );
-    qb.push_bind(market_id as i64).push(
-        r#"
+            WHERE market_id = {}
             ORDER BY block_height DESC, id DESC
-            LIMIT 
-        "#,
-    );
-    qb.push_bind(limit as i64).push(
-        r#"
+            LIMIT {}
         ) recent
         ORDER BY block_height ASC, _row_id ASC
         "#,
+        market_id,
+        limit
     );
-    let rows = qb.build_query_as::<PricePointRow>().fetch_all(pool).await?;
+    let rows = sqlx::query_as::<_, PricePointRow>(&sql).fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -414,23 +408,20 @@ pub async fn get_trades(
     market_id: u64,
     limit: u32,
 ) -> Result<Vec<TradeResponseItem>> {
-    let mut qb = QueryBuilder::<Any>::new(
+    let sql = format!(
         r#"
         SELECT
             id as _row_id, block_height, block_timestamp_ns, transaction_id, trader,
             outcome, is_buy, collateral_amount, token_amount, yes_price, no_price
         FROM market_price_points
-        WHERE market_id = 
-        "#,
-    );
-    qb.push_bind(market_id as i64).push(
-        r#"
+        WHERE market_id = {}
         ORDER BY block_height DESC, id DESC
-        LIMIT 
+        LIMIT {}
         "#,
+        market_id,
+        limit
     );
-    qb.push_bind(limit as i64);
-    let rows = qb.build_query_as::<TradeRow>().fetch_all(pool).await?;
+    let rows = sqlx::query_as::<_, TradeRow>(&sql).fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -454,22 +445,19 @@ pub async fn get_market_activity(
     market_id: u64,
     limit: u32,
 ) -> Result<Vec<MarketActivityItem>> {
-    let mut qb = QueryBuilder::<Any>::new(
+    let sql = format!(
         r#"
         SELECT event_type, block_height, block_timestamp_ns, transaction_id, receipt_id, event_json
         FROM market_events
-        WHERE market_id = 
-        "#,
-    );
-    qb.push_bind(market_id as i64).push(
-        r#"
+        WHERE market_id = {}
           AND event_type IN ('resolution_submitted', 'market_disputed', 'market_settled')
         ORDER BY block_height DESC, id DESC
-        LIMIT 
+        LIMIT {}
         "#,
+        market_id,
+        limit
     );
-    qb.push_bind(limit as i64);
-    let rows = qb.build_query_as::<MarketActivityRow>().fetch_all(pool).await?;
+    let rows = sqlx::query_as::<_, MarketActivityRow>(&sql).fetch_all(pool).await?;
 
     Ok(rows
         .into_iter()
@@ -490,7 +478,7 @@ pub async fn get_resolution_status(
     pool: &DbPool,
     market_id: u64,
 ) -> Result<Option<ResolutionStatusResponse>> {
-    let mut qb = QueryBuilder::<Any>::new(
+    let sql = format!(
         r#"
         SELECT
             p.market_id,
@@ -508,12 +496,11 @@ pub async fn get_resolution_status(
             l.liveness_deadline_ns
         FROM markets_projection p
         LEFT JOIN market_lifecycle_projection l ON l.market_id = p.market_id
-        WHERE p.market_id = 
+        WHERE p.market_id = {}
         "#,
+        market_id
     );
-    qb.push_bind(market_id as i64);
-    let row = qb
-        .build_query_as::<ResolutionStatusRow>()
+    let row = sqlx::query_as::<_, ResolutionStatusRow>(&sql)
         .fetch_optional(pool)
         .await?;
 
