@@ -6,6 +6,7 @@ mod ws;
 
 use anyhow::Result;
 use log::{info, warn};
+use sqlx::any::install_default_drivers;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -17,6 +18,8 @@ use ws::{start_event_listener, EventListenerConfig};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    install_default_drivers();
+
     if let Err(e) = dotenvy::dotenv() {
         warn!("No .env file found: {}", e);
     }
