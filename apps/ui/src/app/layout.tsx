@@ -3,8 +3,8 @@ import '@/app/globals.css';
 import { ReactNode } from 'react';
 import { Metadata } from 'next';
 
-import { Navigation } from '@/components/navigation';
 import { Providers } from '@/components/providers';
+import { LayoutShell } from '@/components/layout-shell';
 
 export const metadata: Metadata = {
   title: {
@@ -34,8 +34,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
     <html lang="en">
       <body>
         <Providers>
-          <Navigation />
-          <main className="page-wrap">{children}</main>
+          <LayoutShell>{children}</LayoutShell>
         </Providers>
       </body>
     </html>

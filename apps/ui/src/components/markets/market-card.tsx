@@ -14,21 +14,24 @@ export function MarketCard({ market }: MarketCardProps) {
   const prices = getPrices(market);
 
   return (
-    <article className="card market-card">
-      <div className="market-card__meta">
+    <article className="dk-card">
+      <div className="dk-card__meta">
         <StatusBadge status={market.status} />
-        <span>Resolves {formatResolutionTime(market.resolutionTimeNs)}</span>
+        <span className="dk-card__resolve">Resolves {formatResolutionTime(market.resolutionTimeNs)}</span>
       </div>
 
-      <h3>
+      <h3 className="dk-card__title">
         <Link href={`/markets/${market.id}`}>{market.question}</Link>
       </h3>
-      <p>{market.description}</p>
+
+      {market.description && (
+        <p className="dk-card__desc">{market.description}</p>
+      )}
 
       <ProbabilityBar yes={prices.yes} no={prices.no} />
 
-      <div className="market-card__footer">
-        <span>Collateral {formatUsd(Number(market.totalCollateral) / 1_000_000)}</span>
+      <div className="dk-card__footer">
+        <span>Vol {formatUsd(Number(market.totalCollateral) / 1_000_000)}</span>
         <span>Fee {(market.feeBps / 100).toFixed(2)}%</span>
       </div>
     </article>

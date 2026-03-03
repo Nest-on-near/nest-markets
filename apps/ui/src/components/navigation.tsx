@@ -15,10 +15,15 @@ const links = [
   { href: '/create', label: 'Create' },
 ];
 
-export function Navigation() {
+interface NavigationProps {
+  dark?: boolean;
+}
+
+export function Navigation({ dark = false }: NavigationProps) {
   const pathname = usePathname();
   const { signedAccountId, loading, signIn, signOut } = useNearWallet();
   const [onrampEnabled, setOnrampEnabled] = useState(true);
+  const [scrolled, setScrolled] = useState(false);
   const onrampToggleAvailable = NETWORK_ID === 'mainnet' || (NETWORK_ID === 'testnet' && ENABLE_ONRAMP_ON_TESTNET);
 
   const isSignedIn = Boolean(signedAccountId);
@@ -27,12 +32,19 @@ export function Navigation() {
     setOnrampEnabled(isMainnetOnrampEnabled());
   }, []);
 
+  useEffect(() => {
+    if (!dark) return;
+    const handleScroll = () => setScrolled(window.scrollY > 60);
+    handleScroll(); // check initial
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [dark]);
+
   async function handleWalletAction() {
     if (isSignedIn) {
       await signOut();
       return;
     }
-
     await signIn();
   }
 
@@ -41,8 +53,12 @@ export function Navigation() {
     setMainnetOnrampEnabled(checked);
   }
 
+  const navClass = dark
+    ? `top-nav top-nav--dark ${scrolled ? 'top-nav--scrolled' : ''}`
+    : 'top-nav';
+
   return (
-    <header className="top-nav">
+    <header className={navClass}>
       <div className="top-nav__inner">
         <Link href="/" className="brand">
           <span className="brand__dot" />
