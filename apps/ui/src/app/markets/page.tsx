@@ -13,6 +13,7 @@ type StatusFilter = 'All' | Exclude<MarketStatus, 'Unknown'>;
 type SortOption = 'newest' | 'collateral';
 
 const statuses: StatusFilter[] = ['All', 'Open', 'Resolving', 'Disputed', 'Settled', 'Closed'];
+const softEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 function SkeletonCard() {
   return (
@@ -43,7 +44,7 @@ const cardVariants = {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+    transition: { duration: 0.5, ease: softEase },
   },
 };
 
@@ -90,7 +91,7 @@ export default function MarketsPage() {
         className="dk-page__header"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.6, ease: softEase }}
       >
         <h1 className="dk-page__title">Markets</h1>
         <p className="dk-page__subtitle">Browse active questions and trade outcome probabilities.</p>
@@ -101,7 +102,7 @@ export default function MarketsPage() {
         className="dk-controls"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.5, delay: 0.15, ease: softEase }}
       >
         {/* Search */}
         <div className="dk-search">
