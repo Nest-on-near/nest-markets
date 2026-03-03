@@ -34,7 +34,7 @@ export function Navigation({ dark = false }: NavigationProps) {
 
   useEffect(() => {
     if (!dark) return;
-    const handleScroll = () => setScrolled(window.scrollY > 60);
+    const handleScroll = () => setScrolled(window.scrollY > 30);
     handleScroll(); // check initial
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);

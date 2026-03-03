@@ -15,10 +15,12 @@
   --no: #de4d8f;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html,
@@ -31,6 +33,9 @@ body {
   color: #f3f4f6;
   font-family: 'Sora', 'Avenir Next', 'Segoe UI', sans-serif;
   line-height: 1.52;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -132,8 +137,9 @@ button {
 }
 
 .top-nav--dark .top-nav__links a {
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.88rem;
+  color: rgba(242, 248, 255, 0.7);
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
 .top-nav--dark .top-nav__links a:hover,
@@ -143,15 +149,16 @@ button {
 }
 
 .top-nav--dark .onramp-toggle {
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.78rem;
+  color: rgba(232, 240, 250, 0.72);
+  font-size: 0.9rem;
 }
 
 .top-nav--dark .wallet-button {
   background: #00EC97;
   border-color: transparent;
   color: #0a0a0f;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 700;
   padding: 0.4rem 1rem;
   border-radius: 100px;
   transition: transform 200ms ease, box-shadow 200ms ease;
@@ -193,9 +200,9 @@ button {
 
 .onramp-toggle {
   align-items: center;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(236, 242, 250, 0.74);
   display: flex;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   font-weight: 600;
   gap: 0.35rem;
   white-space: nowrap;
@@ -211,8 +218,9 @@ button {
 
 .top-nav__links a {
   border-radius: 999px;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.92rem;
+  color: rgba(238, 244, 252, 0.74);
+  font-size: 0.96rem;
+  font-weight: 500;
   padding: 0.3rem 0.75rem;
   transition: 200ms ease;
 }
@@ -1264,19 +1272,19 @@ button {
 }
 
 .ticker-q {
-  color: #9ca3af;
-  font-size: 0.82rem;
+  color: #b0bbca;
+  font-size: 0.98rem;
   font-weight: 500;
 }
 
 .ticker-yes {
   color: #00EC97;
-  font-size: 0.82rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .ticker-delta {
-  font-size: 0.75rem;
+  font-size: 0.92rem;
   font-weight: 600;
 }
 
@@ -1300,9 +1308,9 @@ button {
 }
 
 .section-subtitle {
-  color: #6b7280;
-  font-size: 1.05rem;
-  line-height: 1.5;
+  color: #a7b1c1;
+  font-size: 1.1rem;
+  line-height: 1.65;
   max-width: 500px;
 }
 
@@ -1511,8 +1519,9 @@ button {
 }
 
 .cta-desc {
-  color: #6b7280;
-  font-size: 1rem;
+  color: #b1bbca;
+  font-size: 1.05rem;
+  line-height: 1.62;
   margin-bottom: 2rem;
 }
 
@@ -1559,8 +1568,8 @@ button {
 }
 
 .footer-text {
-  color: #4b5563;
-  font-size: 0.85rem;
+  color: #778196;
+  font-size: 0.92rem;
 }
 
 /* ── Landing responsive ── */
@@ -1599,6 +1608,23 @@ button {
 
   .cta-buttons {
     flex-direction: column;
+  }
+
+  .top-nav__links a {
+    font-size: 0.92rem;
+  }
+
+  .onramp-toggle {
+    font-size: 0.82rem;
+  }
+
+  .ticker-q,
+  .ticker-yes {
+    font-size: 0.9rem;
+  }
+
+  .ticker-delta {
+    font-size: 0.84rem;
   }
 
   .pmc {

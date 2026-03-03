@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, useScroll, useTransform, useSpring, useInView, AnimatePresence } from 'framer-motion';
 import { ArrowRight, TrendingUp, Shield, Zap, ChevronDown } from 'lucide-react';
 import { PredictionMarketCard } from '@/components/ui/prediction-market-card';
+import { CTASection } from '@/components/ui/hero-dithering-card';
 
 /* ─── Animated ticker tape ─── */
 function TickerTape() {
@@ -39,8 +40,14 @@ function TickerTape() {
 
 /* ─── Scroll-linked probability chart (SVG) ─── */
 function ScrollChart() {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+  const { scrollYProgress } = useScroll(
+    hasHydrated ? { target: sectionRef, offset: ['start end', 'end start'] } : undefined
+  );
   const spring = useSpring(scrollYProgress, { stiffness: 60, damping: 20 });
 
   const [pathLen, setPathLen] = useState(0);
@@ -71,7 +78,7 @@ function ScrollChart() {
   const noD = toPath(noPoints);
 
   return (
-    <div ref={ref} className="scroll-chart-section">
+    <div ref={sectionRef} className="scroll-chart-section">
       <div className="scroll-chart-inner">
         <div className="scroll-chart-header">
           <h2 className="section-title">Watch the market move.</h2>
@@ -272,12 +279,6 @@ function FloatingParticles() {
 
 /* ─── Main Landing Page ─── */
 export default function LandingPage() {
-  const heroRef = useRef(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-  const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 0.95]);
-  const heroY = useTransform(scrollYProgress, [0, 0.5], [0, -60]);
-
   const cardRef = useRef(null);
   const cardInView = useInView(cardRef, { once: true, margin: '-100px' });
 
@@ -289,70 +290,7 @@ export default function LandingPage() {
       <FloatingParticles />
 
       {/* ── HERO ── */}
-      <motion.section ref={heroRef} className="hero-section" style={{ opacity: heroOpacity, scale: heroScale, y: heroY }}>
-        <div className="hero-glow" aria-hidden="true" />
-        <div className="hero-glow-2" aria-hidden="true" />
-
-        <motion.div
-          className="hero-content"
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <motion.span
-            className="hero-eyebrow"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            NEST MARKETS · on NEAR
-          </motion.span>
-
-          <motion.h1
-            className="hero-headline"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-          >
-            Ready when your<br />
-            <span className="hero-headline-accent">conviction</span> is.
-          </motion.h1>
-
-          <motion.p
-            className="hero-desc"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-            Prediction markets with fast execution, clear probabilities,<br />
-            and oracle-backed resolution. Built to feel alive.
-          </motion.p>
-
-          <motion.div
-            className="hero-actions-row"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 }}
-          >
-            <Link href="/markets" className="hero-cta-primary">
-              Explore Markets <ArrowRight size={18} />
-            </Link>
-            <Link href="/create" className="hero-cta-secondary">
-              Create Question
-            </Link>
-          </motion.div>
-        </motion.div>
-
-        {/* Scroll indicator */}
-        <motion.div
-          className="scroll-indicator"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-        >
-          <ChevronDown size={20} className="scroll-indicator-icon" />
-        </motion.div>
-      </motion.section>
+      <CTASection />
 
       {/* ── TICKER ── */}
       <TickerTape />
